@@ -1,5 +1,10 @@
 import argparse, os, re, struct, sys, zlib
 
+BPS_ACTION_SOURCE_READ = 0
+BPS_ACTION_TARGET_READ = 1
+BPS_ACTION_SOURCE_COPY = 2
+BPS_ACTION_TARGET_COPY = 3
+
 def error(msg):
     sys.exit(f"Error: {msg}")
 
@@ -14,11 +19,8 @@ def parse_args():
 
     parser = argparse.ArgumentParser(
         description="Qalle's ROM Patcher. Applies a BPS/IPS patch to a file or creates a BPS/IPS "
-        "patch from the differences of two files. Notes: the BPS patch creator is under "
-        "construction and always outputs a patch that creates an empty file; the IPS encoder will "
-        "not store any unchanged bytes even if doing so would reduce the file size; the IPS "
-        "encoder may output the problematic 'EOF' address (0x454f46); said address breaks the IPS "
-        "decoder."
+        "patch from the differences of two files. Notes: the BPS encoder is inefficient; the IPS "
+        "decoder has the 'EOF' address (0x454f46) bug."
     )
 
     parser.add_argument(
@@ -51,8 +53,7 @@ def parse_args():
     parser.add_argument(
         "output_file",
         help="The file to write. In 'apply patch' mode, the patched copy of input_file1. In "
-        "'create patch' mode, the patch file (.bps/.ips). (Note: BPS creation does not work yet; "
-        "see above.)"
+        "'create patch' mode, the patch file (.bps/.ips)."
     )
 
     args = parser.parse_args()
@@ -125,20 +126,20 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
         lengthAndAction = bps_read_int(patchHnd)
         (length, action) = ((lengthAndAction >> 2) + 1, lengthAndAction & 0b11)
 
-        if action == 0:
-            # "SourceRead" (copy from same address in source)
+        if action == BPS_ACTION_SOURCE_READ:
+            # copy from same address in source
             if len(dstData) + length > len(srcData):
                 error("tried to read from invalid position in input data")
             dstData.extend(srcData[len(dstData):len(dstData)+length])
             srcReadBlkCnt += 1
             srcReadByteCnt += length
-        elif action == 1:
-            # "TargetRead" (copy from patch)
+        elif action == BPS_ACTION_TARGET_READ:
+            # copy from patch
             dstData.extend(read_bytes(length, patchHnd))
             trgReadBlkCnt += 1
             trgReadByteCnt += length
-        elif action == 2:
-            # "SourceCopy" (copy from any address in source)
+        elif action == BPS_ACTION_SOURCE_COPY:
+            # copy from any address in source
             srcOffset += bps_decode_signed(bps_read_int(patchHnd))
             if srcOffset < 0 or srcOffset + length > len(srcData):
                 error("tried to read from invalid position in input data")
@@ -161,9 +162,9 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
     if verbose:
         print(
             f"{srcReadByteCnt}/{trgReadByteCnt}/{srcCopyByteCnt}/{trgCopyByteCnt}/"
-            f"{srcReadByteCnt+trgReadByteCnt+srcCopyByteCnt+trgCopyByteCnt} byte(s) "
+            f"{srcReadByteCnt+trgReadByteCnt+srcCopyByteCnt+trgCopyByteCnt} bytes "
             f"in {srcReadBlkCnt}/{trgReadBlkCnt}/{srcCopyBlkCnt}/{trgCopyBlkCnt}/"
-            f"{srcReadBlkCnt+trgReadBlkCnt+srcCopyBlkCnt+trgCopyBlkCnt} block(s) "
+            f"{srcReadBlkCnt+trgReadBlkCnt+srcCopyBlkCnt+trgCopyBlkCnt} blocks "
             "of type SourceRead/TargetRead/SourceCopy/TargetCopy/any"
         )
 
@@ -239,30 +240,77 @@ def bps_encode_int(n):
         yield n & 0x7f
         n = (n >> 7) - 1
 
+def bps_enc_generate_blocks(data1, data2):
+    # generate (start, length) of blocks that differ
+
+    start = -1  # start position of current block (-1 = none)
+
+    # note: pos has an extra value at the end for wrapping things up
+    for pos in range(len(data1) + 1):
+        if start == -1 and pos < len(data1) and data1[pos] != data2[pos]:
+            # start a block
+            start = pos
+        elif start != -1 and (pos == len(data1) or data1[pos] == data2[pos]):
+            # end a block
+            yield (start, pos - start)
+            start = -1
+        elif start != -1 and pos - start == 0xffff:
+            # break up a long block
+            yield (start, pos - start)
+            start = pos
+
 def bps_create(inHnd1, inHnd2, patchHnd, args):
     # create a BPS patch from the difference of inHnd1 and inHnd2, write to patchHnd
 
     inHnd1.seek(0)
-    origData = inHnd1.read()
+    data1 = inHnd1.read()
 
     inHnd2.seek(0)
-    newData = inHnd2.read()
-    if len(newData) != len(origData):
+    data2 = inHnd2.read()
+    if len(data2) != len(data1):
         error("creating a BPS patch from files of different size is not supported")
 
     # header
-    patch = bytearray(b"BPS1")                   # file format id
-    patch.extend(bps_encode_int(len(origData)))  # source file size
-    patch.extend(bps_encode_int(0))              # target file size
-    patch.extend(bps_encode_int(0))              # metadata size
+    patch = bytearray(b"BPS1")                # file format id
+    patch.extend(bps_encode_int(len(data1)))  # source file size
+    patch.extend(bps_encode_int(len(data2)))  # target file size
+    patch.extend(bps_encode_int(0))           # metadata size
 
-    # TODO: the patch itself goes here
-    warn("applying this patch will just create an empty file; see help")
+    srcRdBlkCnt = srcRdByteCnt = trgRdBlkCnt = trgRdByteCnt = 0  # statistics
+
+    # create patch data (TODO: make this more size-efficient)
+    nextPos = 0  # next position to encode
+    for (start, length) in bps_enc_generate_blocks(data1, data2):
+        if start > nextPos:
+            # unchanged bytes since the last block that differs
+            subblkLen = start - nextPos
+            patch.extend(bps_encode_int(((subblkLen - 1) << 2) | BPS_ACTION_SOURCE_READ))
+            srcRdBlkCnt += 1
+            srcRdByteCnt += subblkLen
+        # a block that differs
+        patch.extend(bps_encode_int(((length - 1) << 2) | BPS_ACTION_TARGET_READ))
+        patch.extend(data2[start:start+length])
+        nextPos = start + length
+        trgRdBlkCnt += 1
+        trgRdByteCnt += length
+    if len(data1) > nextPos:
+        # unchanged bytes after the last block that differs
+        subblkLen = len(data1) - nextPos
+        patch.extend(bps_encode_int(((subblkLen - 1) << 2) | BPS_ACTION_SOURCE_READ))
+        srcRdBlkCnt += 1
+        srcRdByteCnt += subblkLen
+
+    if args.verbose:
+        print(
+            f"{srcRdByteCnt}/{trgRdByteCnt}/{srcRdByteCnt+trgRdByteCnt} bytes "
+            f"in {srcRdBlkCnt}/{trgRdBlkCnt}/{srcRdBlkCnt+trgRdBlkCnt} blocks "
+            "of type SourceRead/TargetRead/any"
+        )
 
     # footer
-    patch.extend(struct.pack("<L", zlib.crc32(origData)))  # source file CRC
-    patch.extend(struct.pack("<L", zlib.crc32(b"")))       # target file CRC
-    patch.extend(struct.pack("<L", zlib.crc32(patch)))     # CRC of all preceding data
+    patch.extend(struct.pack("<L", zlib.crc32(data1)))  # source file CRC
+    patch.extend(struct.pack("<L", zlib.crc32(data2)))  # target file CRC
+    patch.extend(struct.pack("<L", zlib.crc32(patch)))  # CRC of all preceding data
 
     patchHnd.seek(0)
     patchHnd.write(patch)
@@ -326,8 +374,8 @@ def ips_apply(inHnd1, patchHnd, outHnd, args):
 
     if args.verbose:
         print(
-            f"{rleByteCnt}/{nonRleByteCnt}/{rleByteCnt+nonRleByteCnt} byte(s) "
-            f"in {rleBlockCnt}/{nonRleBlockCnt}/{rleBlockCnt+nonRleBlockCnt} block(s) "
+            f"{rleByteCnt}/{nonRleByteCnt}/{rleByteCnt+nonRleByteCnt} bytes "
+            f"in {rleBlockCnt}/{nonRleBlockCnt}/{rleBlockCnt+nonRleBlockCnt} blocks "
             "of type RLE/non-RLE/any"
         )
 
@@ -402,6 +450,7 @@ def ips_enc_generate_subblocks(data1, data2):
 
 def ips_create(inHnd1, inHnd2, patchHnd, args):
     # create an IPS patch from the difference of inHnd1 and inHnd2, write to patchHnd
+    # note: does not store any unchanged bytes even if doing so would reduce the file size
 
     inHnd1.seek(0)
     origData = inHnd1.read()
@@ -417,11 +466,6 @@ def ips_create(inHnd1, inHnd2, patchHnd, args):
     rleBlockCnt = nonRleBlockCnt = rleByteCnt = nonRleByteCnt = 0  # statistics
 
     for (start, length, isRle) in ips_enc_generate_subblocks(origData, newData):
-        if start == 0x454f46:
-            warn(
-                "the IPS file contains the 'EOF' address (0x454f46) and will break this program's "
-                "decoder"
-            )
         patch.extend(ips_encode_int(start, 3))
         if isRle:
             patch.extend(ips_encode_int(0, 2))
@@ -439,8 +483,8 @@ def ips_create(inHnd1, inHnd2, patchHnd, args):
 
     if args.verbose:
         print(
-            f"{rleByteCnt}/{nonRleByteCnt}/{rleByteCnt+nonRleByteCnt} byte(s) "
-            f"in {rleBlockCnt}/{nonRleBlockCnt}/{rleBlockCnt+nonRleBlockCnt} block(s) "
+            f"{rleByteCnt}/{nonRleByteCnt}/{rleByteCnt+nonRleByteCnt} bytes "
+            f"in {rleBlockCnt}/{nonRleBlockCnt}/{rleBlockCnt+nonRleBlockCnt} blocks "
             "of type RLE/non-RLE/any"
         )
 

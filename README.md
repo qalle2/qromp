@@ -4,10 +4,8 @@ usage: qromp.py [-h] [-m {a,c}] [-i INPUT_CRC] [-o OUTPUT_CRC] [-v]
                 input_file1 input_file2 output_file
 
 Qalle's ROM Patcher. Applies a BPS/IPS patch to a file or creates a BPS/IPS patch from the
-differences of two files. Notes: the BPS patch creator is under construction and always outputs a
-patch that creates an empty file; the IPS encoder will not store any unchanged bytes even if doing
-so would reduce the file size; the IPS encoder may output the problematic 'EOF' address
-(0x454f46); said address breaks the IPS decoder.
+differences of two files. Notes: the BPS encoder is inefficient; the IPS decoder has the 'EOF'
+address (0x454f46) bug.
 
 positional arguments:
   input_file1           The original, unpatched file to read.
@@ -15,8 +13,7 @@ positional arguments:
                         (.bps/.ips). In 'create patch' mode, the file to compare against
                         input_file1.
   output_file           The file to write. In 'apply patch' mode, the patched copy of input_file1.
-                        In 'create patch' mode, the patch file (.bps/.ips). (Note: BPS creation
-                        does not work yet; see above.)
+                        In 'create patch' mode, the patch file (.bps/.ips).
 
 optional arguments:
   -h, --help            show this help message and exit

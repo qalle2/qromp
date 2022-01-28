@@ -27,13 +27,20 @@ python3 qromp.py test-in/smb3u.nes       test-in/smb3u-mix.ips       test-out/sm
 python3 qromp.py test-in/smb1e.nes       test-in/nop.ips             test-out/smb1e-nop.nes       -i 7d5faa58 -o 7d5faa58  # no change
 echo
 
-echo "=== Create BPS patch (under construction) ==="
-python3 qromp.py -mc test-in/ducktales-e.nes test-out/ducktales-e-fin.nes test-out/nop.bps
+echo "=== Create BPS patches ==="
+python3 qromp.py -mc test-in/megaman4u.nes test-out/megaman4u-fin.nes test-out/megaman4u-fin.bps -v
+python3 qromp.py -mc test-in/smb2e.nes     test-out/smb2e-fin.nes     test-out/smb2e-fin.bps
+python3 qromp.py -mc test-in/smb3e.nes     test-out/smb3e-fin-bps.nes test-out/smb3e-fin.bps
+ls -l test-in/*.bps test-out/*.bps
 echo
 
-echo "=== Verify created BPS patch (will just create an empty file) ==="
-python3 qromp.py test-in/ducktales-e.nes test-out/nop.bps test-out/empty.nes
-ls -l test-out/empty.nes
+echo "=== Verify created BPS patches ==="
+python3 qromp.py test-in/megaman4u.nes test-out/megaman4u-fin.bps test-out/megaman4u-fin2.nes
+python3 qromp.py test-in/smb2e.nes     test-out/smb2e-fin.bps     test-out/smb2e-fin2.nes
+python3 qromp.py test-in/smb3e.nes     test-out/smb3e-fin.bps     test-out/smb3e-fin-bps2.nes
+diff test-out/megaman4u-fin.nes test-out/megaman4u-fin2.nes
+diff test-out/smb2e-fin.nes     test-out/smb2e-fin2.nes
+diff test-out/smb3e-fin-bps.nes test-out/smb3e-fin-bps2.nes
 echo
 
 echo "=== Create IPS patches ==="
