@@ -59,22 +59,20 @@ diff test-out/megaman2u-fin.nes   test-out/megaman2u-fin2.nes
 diff test-out/smb3e-fin-ips.nes   test-out/smb3e-fin-ips2.nes
 echo
 
-echo "=== Seven errors ==="
-python3 qromp.py x                 x                     test-out/a        -i xxxxxxxx
-python3 qromp.py x                 x                     test-out/b        -o 0123456
-python3 qromp.py x                 x                     test-out/c
-python3 qromp.py x                 x                     test-out/d        -mc
-python3 qromp.py x                 x.ips                 test-out/e
-python3 qromp.py test-in/smb1e.nes x.bps                 test-out/f
+echo "=== Five errors ==="
+python3 qromp.py x                 x.bps                 test-out/a        -i xxxxxxxx
+python3 qromp.py x                 x                     test-out/b
+python3 qromp.py x                 x.ips                 test-out/c
+python3 qromp.py test-in/smb1e.nes x.bps                 test-out/d
 python3 qromp.py test-in/smb1e.nes test-in/smb1e-fin.bps test-in/smb1e.nes
 echo
 
 echo "=== One error ==="
-python3 qromp.py test-in/smb1e.nes test-in/ducktales-e-fin.ips test-out/g
+python3 qromp.py test-in/smb1e.nes test-in/ducktales-e-fin.ips test-out/e
 echo
 
 echo "=== Three warnings ==="
-python3 qromp.py test-in/ducktales-e.nes test-in/smb1e-fin.bps test-out/h
+python3 qromp.py test-in/ducktales-e.nes test-in/smb1e-fin.bps test-out/f
 echo
 
 echo "=== Four CRC warnings ==="

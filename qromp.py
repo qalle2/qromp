@@ -1,9 +1,11 @@
-import argparse, os, re, struct, sys, zlib
+import argparse, os, struct, sys
+from zlib import crc32
 
-BPS_ACTION_SOURCE_READ = 0
-BPS_ACTION_TARGET_READ = 1
-BPS_ACTION_SOURCE_COPY = 2
-BPS_ACTION_TARGET_COPY = 3
+BPS_SOURCE_READ = 0
+BPS_TARGET_READ = 1
+BPS_SOURCE_COPY = 2
+BPS_TARGET_COPY = 3
+IPS_MIN_RLE_LEN = 6
 
 def error(msg):
     sys.exit(f"Error: {msg}")
@@ -58,10 +60,12 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if args.input_crc is not None and re.search(r"^[0-9A-Fa-f]{8}$", args.input_crc) is None:
-        error("invalid input file CRC specified")
-    if args.output_crc is not None and re.search(r"^[0-9A-Fa-f]{8}$", args.output_crc) is None:
-        error("invalid output file CRC specified")
+    try:
+        for crc in (args.input_crc, args.output_crc):
+            if crc is not None and not 0 <= int(crc, 16) <= 0xffff_ffff:
+                raise ValueError
+    except ValueError:
+        error("invalid CRC32 specified")
 
     if args.mode == "a" and get_ext(args.input_file2) not in (".bps", ".ips") \
     or args.mode == "c" and get_ext(args.output_file) not in (".bps", ".ips"):
@@ -106,7 +110,7 @@ def bps_read_int(hnd):
 
 def bps_decode_signed(n):
     # decode a signed BPS integer
-    return (-1 if n & 0b1 else 1) * (n >> 1)
+    return (-1 if n & 1 else 1) * (n >> 1)
 
 def bps_decode_blocks(srcData, patchHnd, verbose):
     # decode blocks from BPS file (slices from input file, patch file or previous output)
@@ -124,21 +128,21 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
     while patchHnd.tell() < patchSize - 3 * 4:
         actionAddr = patchHnd.tell()
         lengthAndAction = bps_read_int(patchHnd)
-        (length, action) = ((lengthAndAction >> 2) + 1, lengthAndAction & 0b11)
+        (length, action) = ((lengthAndAction >> 2) + 1, lengthAndAction & 3)
 
-        if action == BPS_ACTION_SOURCE_READ:
+        if action == BPS_SOURCE_READ:
             # copy from same address in source
             if len(dstData) + length > len(srcData):
                 error("tried to read from invalid position in input data")
             dstData.extend(srcData[len(dstData):len(dstData)+length])
             srcReadBlkCnt += 1
             srcReadByteCnt += length
-        elif action == BPS_ACTION_TARGET_READ:
+        elif action == BPS_TARGET_READ:
             # copy from patch
             dstData.extend(read_bytes(length, patchHnd))
             trgReadBlkCnt += 1
             trgReadByteCnt += length
-        elif action == BPS_ACTION_SOURCE_COPY:
+        elif action == BPS_SOURCE_COPY:
             # copy from any address in source
             srcOffset += bps_decode_signed(bps_read_int(patchHnd))
             if srcOffset < 0 or srcOffset + length > len(srcData):
@@ -179,7 +183,7 @@ def bps_apply(inHnd1, patchHnd, outHnd, args):
 
     # get CRC of patch (except for CRC at the end) for later use
     patchHnd.seek(0)
-    patchCrc = zlib.crc32(patchHnd.read(get_file_size(patchHnd) - 4))
+    patchCrc = crc32(patchHnd.read(get_file_size(patchHnd) - 4))
 
     patchHnd.seek(0)
 
@@ -219,9 +223,9 @@ def bps_apply(inHnd1, patchHnd, outHnd, args):
     expectedCrcs = tuple(struct.unpack("<L", footer[i:i+4])[0] for i in (0, 4, 8))
     if args.verbose:
         print("expected CRCs: input={:08x}, output={:08x}, patch={:08x}".format(*expectedCrcs))
-    if expectedCrcs[0] != zlib.crc32(srcData):
+    if expectedCrcs[0] != crc32(srcData):
         warn("input file CRC mismatch")
-    if expectedCrcs[1] != zlib.crc32(dstData):
+    if expectedCrcs[1] != crc32(dstData):
         warn("output file CRC mismatch")
     if expectedCrcs[2] != patchCrc:
         warn("patch file CRC mismatch")
@@ -232,35 +236,36 @@ def bps_apply(inHnd1, patchHnd, outHnd, args):
 # -------------------------------------------------------------------------------------------------
 
 def bps_encode_int(n):
-    # convert a nonnegative integer into BPS format; generate byte values
+    # convert a nonnegative integer into BPS format; return bytes
+    encoded = bytearray()
     while True:
         if n <= 0x7f:
-            yield n | 0x80
+            encoded.append(n | 0x80)
             break
-        yield n & 0x7f
+        encoded.append(n & 0x7f)
         n = (n >> 7) - 1
+    return bytes(encoded)
 
 def bps_enc_generate_blocks(data1, data2):
     # generate (start, length) of blocks that differ
 
-    start = -1  # start position of current block (-1 = none)
+    start = None  # start position of current block
 
-    # note: pos has an extra value at the end for wrapping things up
-    for pos in range(len(data1) + 1):
-        if start == -1 and pos < len(data1) and data1[pos] != data2[pos]:
+    for (pos, (byte1, byte2)) in enumerate(zip(data1, data2)):
+        if start is None and byte1 != byte2:
             # start a block
             start = pos
-        elif start != -1 and (pos == len(data1) or data1[pos] == data2[pos]):
+        elif start is not None and byte1 == byte2:
             # end a block
             yield (start, pos - start)
-            start = -1
-        elif start != -1 and pos - start == 0xffff:
-            # break up a long block
-            yield (start, pos - start)
-            start = pos
+            start = None
 
-def bps_create(inHnd1, inHnd2, patchHnd, args):
-    # create a BPS patch from the difference of inHnd1 and inHnd2, write to patchHnd
+    if start is not None:
+        # end the last block
+        yield (start, len(data1) - start)
+
+def bps_create(inHnd1, inHnd2, args):
+    # create a BPS patch from the difference of inHnd1 and inHnd2, generate data to write
 
     inHnd1.seek(0)
     data1 = inHnd1.read()
@@ -270,11 +275,8 @@ def bps_create(inHnd1, inHnd2, patchHnd, args):
     if len(data2) != len(data1):
         error("creating a BPS patch from files of different size is not supported")
 
-    # header
-    patch = bytearray(b"BPS1")                # file format id
-    patch.extend(bps_encode_int(len(data1)))  # source file size
-    patch.extend(bps_encode_int(len(data2)))  # target file size
-    patch.extend(bps_encode_int(0))           # metadata size
+    # header (id, source/target file size, metadata size)
+    yield b"BPS1" + b"".join(bps_encode_int(n) for n in (len(data1), len(data2), 0))
 
     srcRdBlkCnt = srcRdByteCnt = trgRdBlkCnt = trgRdByteCnt = 0  # statistics
 
@@ -284,19 +286,18 @@ def bps_create(inHnd1, inHnd2, patchHnd, args):
         if start > nextPos:
             # unchanged bytes since the last block that differs
             subblkLen = start - nextPos
-            patch.extend(bps_encode_int(((subblkLen - 1) << 2) | BPS_ACTION_SOURCE_READ))
+            yield bps_encode_int(((subblkLen - 1) << 2) | BPS_SOURCE_READ)
             srcRdBlkCnt += 1
             srcRdByteCnt += subblkLen
         # a block that differs
-        patch.extend(bps_encode_int(((length - 1) << 2) | BPS_ACTION_TARGET_READ))
-        patch.extend(data2[start:start+length])
+        yield bps_encode_int(((length - 1) << 2) | BPS_TARGET_READ) + data2[start:start+length]
         nextPos = start + length
         trgRdBlkCnt += 1
         trgRdByteCnt += length
     if len(data1) > nextPos:
         # unchanged bytes after the last block that differs
         subblkLen = len(data1) - nextPos
-        patch.extend(bps_encode_int(((subblkLen - 1) << 2) | BPS_ACTION_SOURCE_READ))
+        yield bps_encode_int(((subblkLen - 1) << 2) | BPS_SOURCE_READ)
         srcRdBlkCnt += 1
         srcRdByteCnt += subblkLen
 
@@ -307,13 +308,8 @@ def bps_create(inHnd1, inHnd2, patchHnd, args):
             "of type SourceRead/TargetRead/any"
         )
 
-    # footer
-    patch.extend(struct.pack("<L", zlib.crc32(data1)))  # source file CRC
-    patch.extend(struct.pack("<L", zlib.crc32(data2)))  # target file CRC
-    patch.extend(struct.pack("<L", zlib.crc32(patch)))  # CRC of all preceding data
-
-    patchHnd.seek(0)
-    patchHnd.write(patch)
+    # footer except patch CRC (source/target file CRC)
+    yield struct.pack("<2L", crc32(data1), crc32(data2))
 
 # -------------------------------------------------------------------------------------------------
 
@@ -348,7 +344,7 @@ def ips_apply(inHnd1, patchHnd, outHnd, args):
     inHnd1.seek(0)
     dataToPatch = inHnd1.read()
 
-    if args.input_crc is not None and int(args.input_crc, 16) != zlib.crc32(dataToPatch):
+    if args.input_crc is not None and int(args.input_crc, 16) != crc32(dataToPatch):
         warn(f"input file CRC mismatch")
 
     dataToPatch = bytearray(dataToPatch)
@@ -379,7 +375,7 @@ def ips_apply(inHnd1, patchHnd, outHnd, args):
             "of type RLE/non-RLE/any"
         )
 
-    if args.output_crc is not None and int(args.output_crc, 16) != zlib.crc32(dataToPatch):
+    if args.output_crc is not None and int(args.output_crc, 16) != crc32(dataToPatch):
         warn(f"output file CRC mismatch")
 
     outHnd.seek(0)
@@ -396,51 +392,39 @@ def ips_enc_generate_blocks(data1, data2):
     # generate (start, length) of blocks that differ; length <= 0xffff; address may be "EOF"
     # TODO: perhaps handle splits in a more efficient manner?
 
-    start = -1  # start position of current block (-1 = none)
+    start = None  # start position of current block
 
-    # note: pos has an extra value at the end for wrapping things up
-    for pos in range(len(data1) + 1):
-        if start == -1 and pos < len(data1) and data1[pos] != data2[pos]:
+    for (pos, (byte1, byte2)) in enumerate(zip(data1, data2)):
+        if start is None and byte1 != byte2:
             # start a block
             start = pos
-        elif start != -1 and (pos == len(data1) or data1[pos] == data2[pos]):
+        elif start is not None and (byte1 == byte2 or pos - start == 0xffff):
             # end a block
             yield (start, pos - start)
-            start = -1
-        elif start != -1 and pos - start == 0xffff:
-            # break up a long block
-            yield (start, pos - start)
-            start = pos
+            start = (None if byte1 == byte2 else pos)
+
+    if start is not None:
+        # end the last block
+        yield (start, len(data1) - start)
 
 def ips_enc_generate_subblocks(data1, data2):
     # split blocks that differ into RLE and non-RLE subblocks; generate (start, length, is_RLE)
-    # TODO: fix "EOF" address bug (0x454f46)
 
     for (blkStart, blkLen) in ips_enc_generate_blocks(data1, data2):
         block = data2[blkStart:blkStart+blkLen]
-
         # split block into RLE/non-RLE subblocks; e.g. ABBCCCCDDDDDEF -> ABB, 4*C, 5*D, EF
         # note: subPos has an extra value at the end for wrapping things up
-        subStart = 0  # start position of the subblock within the block
+        subStart = 0  # start position of subblock within block
         for subPos in range(blkLen + 1):
             # if this byte differs from the previous one or is the last one...
             if 0 < subPos < blkLen and block[subPos] != block[subPos-1] or subPos == blkLen:
-                # since subStart, we have either:
-                # - an incomplete non-RLE subblock (don't do anything)
-                # - a complete non-RLE subblock (only at the end of the block)
-                # - a complete RLE subblock
-                # - a complete non-RLE subblock and a complete RLE subblock
-
-                # number of bytes before the repeating bytes at the end (e.g. 3 for "ABBCCCC")
-                nonRleLen = len( block[subStart:subPos].rstrip( bytes((block[subPos-1],)) ) )
-                # number of repeating bytes at the end (e.g. 4 for "ABBCCCC")
+                # output 0-2 subblocks (non-RLE, RLE, both in that order, or neither);
+                # the RLE part is the sequence of identical bytes at the end of the substring
+                nonRleLen = len(block[subStart:subPos].rstrip(block[subPos-1:subPos]))
                 rleLen = subPos - subStart - nonRleLen
-                # if an RLE subblock is too short, merge it to the non-RLE subblock
-                # note: this value was found experimentally
-                if rleLen < 6:
+                if rleLen < IPS_MIN_RLE_LEN:
                     nonRleLen += rleLen
                     rleLen = 0
-                # output non-RLE subblock, RLE subblock, both or neither
                 if rleLen or (nonRleLen and subPos == blkLen):
                     if nonRleLen:
                         yield (blkStart + subStart, nonRleLen, False)
@@ -448,9 +432,11 @@ def ips_enc_generate_subblocks(data1, data2):
                         yield (blkStart + subStart + nonRleLen, rleLen, True)
                     subStart = subPos
 
-def ips_create(inHnd1, inHnd2, patchHnd, args):
-    # create an IPS patch from the difference of inHnd1 and inHnd2, write to patchHnd
-    # note: does not store any unchanged bytes even if doing so would reduce the file size
+def ips_create(inHnd1, inHnd2, args):
+    # create an IPS patch from the difference of inHnd1 and inHnd2, generate data to write
+    # notes:
+    # - does not store any unchanged bytes even if doing so would reduce the file size
+    # - has the "EOF" address (0x454f46) bug
 
     inHnd1.seek(0)
     origData = inHnd1.read()
@@ -462,24 +448,25 @@ def ips_create(inHnd1, inHnd2, patchHnd, args):
     if len(newData) != len(origData):
         error("creating an IPS patch from files of different size is not supported")
 
-    patch = bytearray(b"PATCH")
+    yield b"PATCH"  # file format id
+
     rleBlockCnt = nonRleBlockCnt = rleByteCnt = nonRleByteCnt = 0  # statistics
 
     for (start, length, isRle) in ips_enc_generate_subblocks(origData, newData):
-        patch.extend(ips_encode_int(start, 3))
+        yield ips_encode_int(start, 3)
         if isRle:
-            patch.extend(ips_encode_int(0, 2))
-            patch.extend(ips_encode_int(length, 2))
-            patch.append(newData[start])
+            yield ips_encode_int(0, 2)
+            yield ips_encode_int(length, 2)
+            yield newData[start:start+1]
             rleBlockCnt += 1
             rleByteCnt += length
         else:
-            patch.extend(ips_encode_int(length, 2))
-            patch.extend(newData[start:start+length])
+            yield ips_encode_int(length, 2)
+            yield newData[start:start+length]
             nonRleBlockCnt += 1
             nonRleByteCnt += length
 
-    patch.extend(b"EOF")
+    yield b"EOF"
 
     if args.verbose:
         print(
@@ -488,29 +475,33 @@ def ips_create(inHnd1, inHnd2, patchHnd, args):
             "of type RLE/non-RLE/any"
         )
 
-    patchHnd.seek(0)
-    patchHnd.write(patch)
-
 # -------------------------------------------------------------------------------------------------
 
 def main():
     args = parse_args()
 
-    # which function to use
-    if args.mode == "a" and get_ext(args.input_file2) == ".bps":
-        patchFn = bps_apply
-    elif args.mode == "a":
-        patchFn = ips_apply
-    elif get_ext(args.output_file) == ".bps":
-        patchFn = bps_create
-    else:
-        patchFn = ips_create
-
     try:
         with open(args.input_file1, "rb") as inHnd1, \
         open(args.input_file2, "rb") as inHnd2, \
         open(args.output_file, "wb") as outHnd:
-            patchFn(inHnd1, inHnd2, outHnd, args)
+            if args.mode == "a":
+                # apply a patch
+                if get_ext(args.input_file2) == ".bps":
+                    bps_apply(inHnd1, inHnd2, outHnd, args)
+                else:
+                    ips_apply(inHnd1, inHnd2, outHnd, args)
+            else:
+                # create a patch
+                outHnd.seek(0)
+                if get_ext(args.output_file) == ".bps":
+                    patchCrc = 0
+                    for bytes_ in bps_create(inHnd1, inHnd2, args):
+                        outHnd.write(bytes_)
+                        patchCrc = crc32(bytes_, patchCrc)
+                    outHnd.write(struct.pack("<L", patchCrc))
+                else:
+                    for bytes_ in ips_create(inHnd1, inHnd2, args):
+                        outHnd.write(bytes_)
     except OSError:
         error("could not read the input files or write the output file")
 
