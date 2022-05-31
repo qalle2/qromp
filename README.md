@@ -1,30 +1,43 @@
-# Qalle's ROM Patcher
-```
-usage: qromp.py [-h] [-m {a,c}] [-i INPUT_CRC] [-o OUTPUT_CRC] [-v]
-                input_file1 input_file2 output_file
+# Qalle's ROM Patcher / Qalle's ROM Patch Creator
+Apply a BPS/IPS patch to a binary file or create a BPS/IPS patch file from the differences of two binary files.
 
-Qalle's ROM Patcher. Applies a BPS/IPS patch to a file or creates a BPS/IPS patch from the
-differences of two files. Notes: the BPS encoder is inefficient; the IPS decoder has the 'EOF'
+## qromp.py
+```
+usage: qromp.py [-h] [-i INPUT_CRC] [-o OUTPUT_CRC] [-v] orig_file patch_file output_file
+
+Qalle's ROM Patcher. Applies a BPS/IPS patch to a file. Note: the IPS decoder has the 'EOF'
 address (0x454f46) bug.
 
 positional arguments:
-  input_file1           The original, unpatched file to read.
-  input_file2           The second file to read. In 'apply patch' mode, the patch file
-                        (.bps/.ips). In 'create patch' mode, the file to compare against
-                        input_file1.
-  output_file           The file to write. In 'apply patch' mode, the patched copy of input_file1.
-                        In 'create patch' mode, the patch file (.bps/.ips).
+  orig_file             The original, unpatched file to read.
+  patch_file            The patch file (.bps/.ips) to read.
+  output_file           Patched copy of orig_file to write.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  -m {a,c}, --mode {a,c}
-                        What to do. 'a' (the default): apply a patch file to another file. 'c':
-                        create a patch file.
   -i INPUT_CRC, --input-crc INPUT_CRC
-                        Expected CRC32 checksum (zlib variety) of input_file1. 8 hexadecimal
-                        digits. Only used when applying an IPS patch.
+                        Expected CRC32 checksum (zlib variety) of orig_file. 8 hexadecimal digits.
   -o OUTPUT_CRC, --output-crc OUTPUT_CRC
                         Expected CRC32 checksum (zlib variety) of output_file. 8 hexadecimal
-                        digits. Only used when applying an IPS patch.
+                        digits.
   -v, --verbose         Print more info.
 ```
+
+## qromp_enc.py
+```
+usage: qromp_enc.py [-h] [-v] orig_file modified_file patch_file
+
+Qalle's ROM Patch Creator. Creates a BPS/IPS patch from the differences of two files. Note: the
+BPS encoder is inefficient.
+
+positional arguments:
+  orig_file      The original file to read.
+  modified_file  The file to read and compare against orig_file.
+  patch_file     The patch file to write (.bps/.ips).
+
+options:
+  -h, --help     show this help message and exit
+  -v, --verbose  Print more info.
+```
+
+Note: for legal reasons, no bytes from the original file will be saved to the patch file, even if it would make the patch smaller.

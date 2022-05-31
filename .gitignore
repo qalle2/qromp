@@ -1,2 +1,4 @@
-test-in/*
+test-in-orig/*
+test-in-patch/*
+test-in-patched/*
 test-out/*
