@@ -3,8 +3,6 @@ from zlib import crc32
 
 BPS_SOURCE_READ = 0
 BPS_TARGET_READ = 1
-BPS_SOURCE_COPY = 2
-BPS_TARGET_COPY = 3
 IPS_MIN_RLE_LEN = 6
 
 def error(msg):
@@ -49,17 +47,6 @@ def parse_args():
 
     return args
 
-def get_file_size(hnd):
-    # get file size without disturbing file handle position
-    return os.stat(hnd.fileno()).st_size
-
-def read_bytes(n, hnd):
-    # return n bytes from handle or exit on EOF
-    data = hnd.read(n)
-    if len(data) < n:
-        error("unexpected end of patch file")
-    return data
-
 def generate_blocks(data1, data2, maxLen=None):
     # generate (start, length) of blocks that differ; maxLen = maximum length
 
@@ -86,6 +73,9 @@ def generate_blocks(data1, data2, maxLen=None):
 
 def bps_encode_int(n):
     # convert a nonnegative integer into BPS format; return bytes
+    # final byte has MSB set, all other bytes have MSB clear
+    # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14) = 0x29a92
+
     encoded = bytearray()
     while True:
         if n <= 0x7f:
@@ -95,14 +85,16 @@ def bps_encode_int(n):
         n = (n >> 7) - 1
     return bytes(encoded)
 
-def bps_create(inHnd1, inHnd2, args):
-    # create a BPS patch from the difference of inHnd1 and inHnd2, generate data to write
+def bps_create(handle1, handle2, args):
+    # create a BPS patch from the differences of handle1 and handle2; generate patch data except
+    # for patch CRC at the end
+    # note: inefficient; doesn't use the "SourceCopy" and "TargetCopy" actions at all
 
-    inHnd1.seek(0)
-    data1 = inHnd1.read()
+    handle1.seek(0)
+    data1 = handle1.read()
 
-    inHnd2.seek(0)
-    data2 = inHnd2.read()
+    handle2.seek(0)
+    data2 = handle2.read()
     if len(data2) != len(data1):
         error("creating a BPS patch from files of different size is not supported")
 
@@ -111,7 +103,7 @@ def bps_create(inHnd1, inHnd2, args):
 
     srcRdBlkCnt = srcRdByteCnt = trgRdBlkCnt = trgRdByteCnt = 0  # statistics
 
-    # create patch data (TODO: make this more size-efficient)
+    # create patch data
     nextPos = 0  # next position to encode
     for (start, length) in generate_blocks(data1, data2):
         if start > nextPos:
@@ -145,10 +137,11 @@ def bps_create(inHnd1, inHnd2, args):
 
 def ips_encode_int(n, byteCnt):
     # encode an IPS integer (unsigned, most significant byte first)
+
     assert n < 0x100 ** byteCnt
     return bytes((n >> s) & 0xff for s in range((byteCnt - 1) * 8, -8, -8))
 
-def ips_enc_generate_subblocks(data1, data2):
+def ips_generate_subblocks(data1, data2):
     # split blocks that differ into RLE and non-RLE subblocks; generate (start, length, is_RLE)
 
     for (blkStart, blkLen) in generate_blocks(data1, data2, 0xffff):
@@ -173,19 +166,19 @@ def ips_enc_generate_subblocks(data1, data2):
                         yield (blkStart + subStart + nonRleLen, rleLen, True)
                     subStart = subPos
 
-def ips_create(inHnd1, inHnd2, args):
-    # create an IPS patch from the difference of inHnd1 and inHnd2, generate data to write
+def ips_create(handle1, handle2, args):
+    # create an IPS patch from the differences of handle1 and handle2; generate patch data
     # notes:
     # - does not store any unchanged bytes even if doing so would reduce the file size
     # - has the "EOF" address (0x454f46) bug
 
-    inHnd1.seek(0)
-    origData = inHnd1.read()
+    handle1.seek(0)
+    origData = handle1.read()
     if len(origData) > 2 ** 24:
         error("creating an IPS patch from files larger than 16 MiB is not supported")
 
-    inHnd2.seek(0)
-    newData = inHnd2.read()
+    handle2.seek(0)
+    newData = handle2.read()
     if len(newData) != len(origData):
         error("creating an IPS patch from files of different size is not supported")
 
@@ -193,7 +186,7 @@ def ips_create(inHnd1, inHnd2, args):
 
     rleBlockCnt = nonRleBlockCnt = rleByteCnt = nonRleByteCnt = 0  # statistics
 
-    for (start, length, isRle) in ips_enc_generate_subblocks(origData, newData):
+    for (start, length, isRle) in ips_generate_subblocks(origData, newData):
         yield ips_encode_int(start, 3)
         if isRle:
             yield ips_encode_int(0, 2)
@@ -220,21 +213,26 @@ def ips_create(inHnd1, inHnd2, args):
 def main():
     args = parse_args()
 
+    # create patch data
     try:
-        with open(args.orig_file, "rb") as inHnd1, \
-        open(args.modified_file, "rb") as inHnd2, \
-        open(args.patch_file, "wb") as patchHnd:
-            patchHnd.seek(0)
+        with open(args.orig_file, "rb") as handle1, open(args.modified_file, "rb") as handle2:
+            patch = bytearray()
             if get_ext(args.patch_file) == ".bps":
-                patchCrc = 0
-                for bytes_ in bps_create(inHnd1, inHnd2, args):
-                    patchHnd.write(bytes_)
-                    patchCrc = crc32(bytes_, patchCrc)
-                patchHnd.write(struct.pack("<L", patchCrc))
+                for bytes_ in bps_create(handle1, handle2, args):
+                    patch.extend(bytes_)
+                patch.extend(struct.pack("<L", crc32(patch)))
             else:
-                for bytes_ in ips_create(inHnd1, inHnd2, args):
-                    patchHnd.write(bytes_)
+                for bytes_ in ips_create(handle1, handle2, args):
+                    patch.extend(bytes_)
     except OSError:
-        error("could not read the input files or write the output file")
+        error("could not read some of the input files")
+
+    # write patch data
+    try:
+        with open(args.patch_file, "wb") as handle:
+            handle.seek(0)
+            handle.write(patch)
+    except OSError:
+        error("could not write output file")
 
 main()
