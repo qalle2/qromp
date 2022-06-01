@@ -60,6 +60,28 @@ def read_bytes(n, hnd):
         error("unexpected end of patch file")
     return data
 
+def generate_blocks(data1, data2, maxLen=None):
+    # generate (start, length) of blocks that differ; maxLen = maximum length
+
+    start = None  # start position of current block
+
+    for (pos, (byte1, byte2)) in enumerate(zip(data1, data2)):
+        if start is None and byte1 != byte2:
+            # start a block
+            start = pos
+        elif start is not None and byte1 == byte2:
+            # end a block
+            yield (start, pos - start)
+            start = None
+        elif start is not None and maxLen is not None and pos - start == maxLen:
+            # end a block and start a new one
+            yield (start, pos - start)
+            start = pos
+
+    if start is not None:
+        # end the last block
+        yield (start, len(data1) - start)
+
 # -------------------------------------------------------------------------------------------------
 
 def bps_encode_int(n):
@@ -72,24 +94,6 @@ def bps_encode_int(n):
         encoded.append(n & 0x7f)
         n = (n >> 7) - 1
     return bytes(encoded)
-
-def bps_enc_generate_blocks(data1, data2):
-    # generate (start, length) of blocks that differ
-
-    start = None  # start position of current block
-
-    for (pos, (byte1, byte2)) in enumerate(zip(data1, data2)):
-        if start is None and byte1 != byte2:
-            # start a block
-            start = pos
-        elif start is not None and byte1 == byte2:
-            # end a block
-            yield (start, pos - start)
-            start = None
-
-    if start is not None:
-        # end the last block
-        yield (start, len(data1) - start)
 
 def bps_create(inHnd1, inHnd2, args):
     # create a BPS patch from the difference of inHnd1 and inHnd2, generate data to write
@@ -109,7 +113,7 @@ def bps_create(inHnd1, inHnd2, args):
 
     # create patch data (TODO: make this more size-efficient)
     nextPos = 0  # next position to encode
-    for (start, length) in bps_enc_generate_blocks(data1, data2):
+    for (start, length) in generate_blocks(data1, data2):
         if start > nextPos:
             # unchanged bytes since the last block that differs
             subblkLen = start - nextPos
@@ -144,29 +148,10 @@ def ips_encode_int(n, byteCnt):
     assert n < 0x100 ** byteCnt
     return bytes((n >> s) & 0xff for s in range((byteCnt - 1) * 8, -8, -8))
 
-def ips_enc_generate_blocks(data1, data2):
-    # generate (start, length) of blocks that differ; length <= 0xffff; address may be "EOF"
-    # TODO: perhaps handle splits in a more efficient manner?
-
-    start = None  # start position of current block
-
-    for (pos, (byte1, byte2)) in enumerate(zip(data1, data2)):
-        if start is None and byte1 != byte2:
-            # start a block
-            start = pos
-        elif start is not None and (byte1 == byte2 or pos - start == 0xffff):
-            # end a block
-            yield (start, pos - start)
-            start = (None if byte1 == byte2 else pos)
-
-    if start is not None:
-        # end the last block
-        yield (start, len(data1) - start)
-
 def ips_enc_generate_subblocks(data1, data2):
     # split blocks that differ into RLE and non-RLE subblocks; generate (start, length, is_RLE)
 
-    for (blkStart, blkLen) in ips_enc_generate_blocks(data1, data2):
+    for (blkStart, blkLen) in generate_blocks(data1, data2, 0xffff):
         block = data2[blkStart:blkStart+blkLen]
         # split block into RLE/non-RLE subblocks; e.g. ABBCCCCDDDDDEF -> ABB, 4*C, 5*D, EF
         # note: subPos has an extra value at the end for wrapping things up
