@@ -21,14 +21,6 @@ python3 qromp.py test-in-orig/smb3e.nes \
     test-in-patch/smb3e-fin.bps test-out/smb3e-fin-bps.nes
 echo
 
-echo "=== Verify BPS-patched files ==="
-diff test-in-patched/megaman1u-fin.nes test-out/megaman1u-fin.nes
-diff test-in-patched/megaman4u-fin.nes test-out/megaman4u-fin.nes
-diff test-in-patched/smb1e-fin.nes     test-out/smb1e-fin.nes
-diff test-in-patched/smb2e-fin.nes     test-out/smb2e-fin.nes
-diff test-in-patched/smb3e-fin-bps.nes test-out/smb3e-fin-bps.nes
-echo
-
 echo "=== Apply IPS patches ==="
 # note: expected CRCs of output files are from files patched with
 # Romhacking.net online patcher
@@ -52,13 +44,10 @@ python3 qromp.py test-in-orig/smb1e.nes \
     -i 7d5faa58 -o 7d5faa58  # no change
 echo
 
-echo "=== Verify IPS-patched files ==="
-diff test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin.nes
-diff test-in-patched/megaman2u-fin.nes   test-out/megaman2u-fin.nes
-diff test-in-patched/smb3e-fin-ips.nes   test-out/smb3e-fin-ips.nes
-diff test-in-patched/smb3u-marioadv.nes  test-out/smb3u-marioadv.nes
-diff test-in-patched/smb3u-mix.nes       test-out/smb3u-mix.nes
-diff test-in-orig/smb1e.nes              test-out/smb1e-nop.nes
+echo "=== Verify patched files ==="
+cd test-out
+md5sum -c --quiet ../patched.md5
+cd ..
 echo
 
 echo "=== Six distinct errors ==="
