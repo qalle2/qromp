@@ -7,9 +7,9 @@ rm -f test-out/*
 
 echo "=== Create BPS patches ==="
 python3 qromp_enc.py test-in-orig/megaman4u.nes \
-    test-in-patched/megaman4u-fin.nes test-out/megaman4u-fin.bps -v
+    test-in-patched/megaman4u-fin.nes test-out/megaman4u-fin.bps
 python3 qromp_enc.py test-in-orig/smb2e.nes \
-    test-in-patched/smb2e-fin.nes test-out/smb2e-fin.bps
+    test-in-patched/smb2e-fin.nes test-out/smb2e-fin.bps -v
 python3 qromp_enc.py test-in-orig/smb3e.nes \
     test-in-patched/smb3e-fin-bps.nes test-out/smb3e-fin.bps
 echo "Original:"
@@ -20,9 +20,12 @@ echo
 
 echo "=== Create IPS patches ==="
 python3 qromp_enc.py test-in-orig/ducktales-e.nes \
-    test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin.ips -v
+    test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin.ips
+python3 qromp_enc.py test-in-orig/ducktales-e.nes \
+    test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin-u2-r4.ips \
+    -u2 -r4
 python3 qromp_enc.py test-in-orig/megaman2u.nes \
-    test-in-patched/megaman2u-fin.nes test-out/megaman2u-fin.ips
+    test-in-patched/megaman2u-fin.nes test-out/megaman2u-fin.ips -v
 python3 qromp_enc.py test-in-orig/smb3e.nes \
     test-in-patched/smb3e-fin-ips.nes test-out/smb3e-fin.ips
 echo "Original:"
@@ -42,6 +45,8 @@ python3 qromp.py test-in-orig/smb3e.nes \
 # apply IPS
 python3 qromp.py test-in-orig/ducktales-e.nes \
     test-out/ducktales-e-fin.ips test-out/ducktales-e-fin.nes
+python3 qromp.py test-in-orig/ducktales-e.nes \
+    test-out/ducktales-e-fin-u2-r4.ips test-out/ducktales-e-fin-u2-r4.nes
 python3 qromp.py test-in-orig/megaman2u.nes \
     test-out/megaman2u-fin.ips test-out/megaman2u-fin.nes
 python3 qromp.py test-in-orig/smb3e.nes \
@@ -52,7 +57,7 @@ md5sum -c --ignore-missing --quiet ../patched.md5
 cd ..
 echo
 
-echo "=== Four distinct errors ==="
+echo "=== Five distinct errors ==="
 python3 qromp_enc.py nonexistent \
     test-in-orig/smb1e.nes test-out/temp1.bps
 python3 qromp_enc.py test-in-orig/smb1e.nes \
@@ -61,4 +66,6 @@ python3 qromp_enc.py test-in-orig/smb1e.nes \
     test-in-orig/smb1e.nes test-out/x.unsupported
 python3 qromp_enc.py test-in-orig/smb1e.nes \
     test-in-orig/smb1e.nes test-in-patch/nop.ips   # target already exists
+python3 qromp_enc.py test-in-orig/smb1e.nes \
+    test-in-orig/smb2e.nes test-out/temp2.bps  # different size
 echo

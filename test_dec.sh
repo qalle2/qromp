@@ -46,7 +46,7 @@ echo
 
 echo "=== Verify patched files ==="
 cd test-out
-md5sum -c --quiet ../patched.md5
+md5sum -c --ignore-missing --quiet ../patched.md5
 cd ..
 echo
 
