@@ -28,17 +28,19 @@ def parse_args():
     # parse command line arguments
 
     parser = argparse.ArgumentParser(
-        description="Qalle's ROM Patcher. Applies a BPS/IPS patch to a file. Note: the IPS "
-        "decoder has the 'EOF' address (0x454f46) bug."
+        description="Qalle's ROM Patcher. Applies a BPS/IPS patch to a file. "
+        "Note: the IPS decoder has the 'EOF' address (0x454f46) bug."
     )
 
     parser.add_argument(
         "-i", "--input-crc", type=str,
-        help="Expected CRC32 checksum (zlib variety) of orig_file. 8 hexadecimal digits."
+        help="Expected CRC32 checksum (zlib variety) of orig_file. 8 "
+        "hexadecimal digits."
     )
     parser.add_argument(
         "-o", "--output-crc", type=str,
-        help="Expected CRC32 checksum (zlib variety) of output_file. 8 hexadecimal digits."
+        help="Expected CRC32 checksum (zlib variety) of output_file. 8 "
+        "hexadecimal digits."
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Print more info."
@@ -75,12 +77,13 @@ def parse_args():
 
     return args
 
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 def bps_read_int(hnd):
     # read an unsigned BPS integer starting from current file position
     # final byte has MSB set, all other bytes have MSB clear
-    # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14) = 0x29a92
+    # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14)
+    # = 0x29a92
     decoded = 0
     shift = 0
     while True:
@@ -97,7 +100,8 @@ def bps_decode_signed(n):
     return (-1 if n & 1 else 1) * (n >> 1)
 
 def bps_decode_blocks(srcData, patchHnd, verbose):
-    # decode blocks from BPS file (slices from input file, patch file or previous output)
+    # decode blocks from BPS file (slices from input file, patch file or
+    # previous output)
 
     patchSize = get_file_size(patchHnd)
 
@@ -116,7 +120,10 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
         if action == 0:
             # "SourceRead" - copy from same address in source
             if len(dstData) + length > len(srcData):
-                error("SourceRead: tried to read from invalid position in input data")
+                error(
+                    "SourceRead: tried to read from invalid position in input "
+                    "data"
+                )
             dstData.extend(srcData[len(dstData):len(dstData)+length])
             srcReadBlkCnt += 1
             srcReadByteCnt += length
@@ -129,7 +136,10 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             # "SourceCopy" - copy from any address in source
             srcOffset += bps_decode_signed(bps_read_int(patchHnd))
             if srcOffset < 0 or srcOffset + length > len(srcData):
-                error("SourceCopy: tried to read from invalid position in input data")
+                error(
+                    "SourceCopy: tried to read from invalid position in input "
+                    "data"
+                )
             dstData.extend(srcData[srcOffset:srcOffset+length])
             srcOffset += length
             srcCopyBlkCnt += 1
@@ -138,8 +148,12 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             # "TargetCopy" - copy from any address in target
             dstOffset += bps_decode_signed(bps_read_int(patchHnd))
             if not 0 <= dstOffset < len(dstData):
-                error("TargetCopy: tried to read from invalid position in output data")
-            # can't copy all in one go because newly-added bytes may also be read
+                error(
+                    "TargetCopy: tried to read from invalid position in "
+                    "output data"
+                )
+            # can't copy all in one go because newly-added bytes may also be
+            # read
             for i in range(length):
                 dstData.append(dstData[dstOffset])
                 dstOffset += 1
@@ -148,8 +162,10 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
 
     if verbose:
         print(
-            f"{srcReadByteCnt}/{trgReadByteCnt}/{srcCopyByteCnt}/{trgCopyByteCnt} bytes in "
-            f"{srcReadBlkCnt}/{trgReadBlkCnt}/{srcCopyBlkCnt}/{trgCopyBlkCnt} blocks of type "
+            f"{srcReadByteCnt}/{trgReadByteCnt}/"
+            f"{srcCopyByteCnt}/{trgCopyByteCnt} bytes in "
+            f"{srcReadBlkCnt}/{trgReadBlkCnt}/"
+            f"{srcCopyBlkCnt}/{trgCopyBlkCnt} blocks of type "
             "SourceRead/TargetRead/SourceCopy/TargetCopy"
         )
 
@@ -201,9 +217,14 @@ def bps_apply(origHnd, patchHnd, args):
 
     # validate CRCs from footer
     footer = read_bytes(3 * 4, patchHnd)
-    expectedCrcs = tuple(struct.unpack("<L", footer[i:i+4])[0] for i in (0, 4, 8))
+    expectedCrcs = tuple(
+        struct.unpack("<L", footer[i:i+4])[0] for i in (0, 4, 8)
+    )
     if args.verbose:
-        print("expected CRCs: input={:08x}, output={:08x}, patch={:08x}".format(*expectedCrcs))
+        print(
+            "expected CRCs: input={:08x}, output={:08x}, patch={:08x}"
+            .format(*expectedCrcs)
+        )
     if expectedCrcs[0] != crc32(srcData):
         warn("input file CRC mismatch")
     if expectedCrcs[1] != crc32(dstData):
@@ -213,7 +234,7 @@ def bps_apply(origHnd, patchHnd, args):
 
     return dstData
 
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 def ips_decode_int(bytes_):
     # decode an IPS integer (unsigned, most significant byte first)
@@ -221,7 +242,8 @@ def ips_decode_int(bytes_):
 
 def ips_generate_blocks(hnd):
     # read IPS file starting from after header
-    # generate each block as (offset, length, is_RLE, data); for RLE blocks, data is one byte
+    # generate each block as (offset, length, is_RLE, data); for RLE blocks,
+    # data is one byte
 
     while True:
         blockPos = hnd.tell()
@@ -233,7 +255,10 @@ def ips_generate_blocks(hnd):
             # RLE
             length = ips_decode_int(read_bytes(2, hnd))
             if length < 3:
-                warn("RLE block has less than three bytes; suboptimal encoding or corrupt patch?")
+                warn(
+                    "RLE block has less than three bytes; suboptimal encoding "
+                    "or corrupt patch?"
+                )
             yield (offset, length, True, read_bytes(1, hnd))
         else:
             # non-RLE
@@ -271,8 +296,8 @@ def ips_apply(origHnd, patchHnd, args):
     if args.verbose:
         print(
             f"{rleByteCnt}/{nonRleByteCnt}/{rleByteCnt+nonRleByteCnt} bytes "
-            f"in {rleBlockCnt}/{nonRleBlockCnt}/{rleBlockCnt+nonRleBlockCnt} blocks "
-            "of type RLE/non-RLE/any"
+            f"in {rleBlockCnt}/{nonRleBlockCnt}/{rleBlockCnt+nonRleBlockCnt} "
+            "blocks of type RLE/non-RLE/any"
         )
 
     if args.output_crc is not None and int(args.output_crc, 16) != crc32(data):
@@ -280,14 +305,15 @@ def ips_apply(origHnd, patchHnd, args):
 
     return data
 
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 def main():
     args = parse_args()
 
     # create patched data
     try:
-        with open(args.orig_file, "rb") as origHnd, open(args.patch_file, "rb") as patchHnd:
+        with open(args.orig_file, "rb") as origHnd, \
+        open(args.patch_file, "rb") as patchHnd:
             if get_ext(args.patch_file) == ".bps":
                 patchedData = bps_apply(origHnd, patchHnd, args)
             else:
