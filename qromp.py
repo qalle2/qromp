@@ -295,9 +295,9 @@ def ips_apply(origHnd, patchHnd, args):
 
     if args.verbose:
         print(
-            f"{rleByteCnt}/{nonRleByteCnt}/{rleByteCnt+nonRleByteCnt} bytes "
-            f"in {rleBlockCnt}/{nonRleBlockCnt}/{rleBlockCnt+nonRleBlockCnt} "
-            "blocks of type RLE/non-RLE/any"
+            f"{rleByteCnt}/{nonRleByteCnt} bytes "
+            f"in {rleBlockCnt}/{nonRleBlockCnt} "
+            "blocks of type RLE/non-RLE"
         )
 
     if args.output_crc is not None and int(args.output_crc, 16) != crc32(data):

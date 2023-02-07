@@ -51,5 +51,3 @@ options:
                         in IPS patches. 1-10, default=6. Other values may
                         reduce patch size.
 ```
-
-Note: for legal reasons, no bytes from the original file will be saved to the patch file, even if it would make the patch smaller.
