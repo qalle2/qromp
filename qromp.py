@@ -1,12 +1,6 @@
 import argparse, os, struct, sys
 from zlib import crc32
 
-def error(msg):
-    sys.exit(f"Error: {msg}")
-
-def warn(msg):
-    print("Warning:", msg, file=sys.stderr)
-
 def get_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
 
@@ -19,9 +13,9 @@ def read_bytes(n, hnd):
     try:
         data = hnd.read(n)
     except MemoryError:
-        error("out of memory reading patch file")
+        sys.exit("Out of memory. (Corrupt patch file?)")
     if len(data) < n:
-        error("unexpected end of patch file")
+        sys.exit("Unexpected end of patch file.")
     return data
 
 def parse_args():
@@ -51,14 +45,14 @@ def parse_args():
     args = parser.parse_args()
 
     if get_ext(args.patch_file) not in (".bps", ".ips"):
-        error("unsupported patch file format")
+        sys.exit("Unsupported patch file format.")
 
     if not os.path.isfile(args.orig_file):
-        error("original file not found")
+        sys.exit("Original file not found.")
     if not os.path.isfile(args.patch_file):
-        error("patch file not found")
+        sys.exit("Patch file not found.")
     if os.path.exists(args.output_file):
-        error("output file already exists")
+        sys.exit("Output file already exists.")
 
     return args
 
@@ -100,14 +94,15 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
 
     while patchHnd.tell() < patchSize - 3 * 4:
         lengthAndAction = bps_read_int(patchHnd)
-        (length, action) = ((lengthAndAction >> 2) + 1, lengthAndAction & 3)
+        length = (lengthAndAction >> 2) + 1
+        action = lengthAndAction & 3
 
         if action == 0:
             # "SourceRead" - copy from same address in source
             if len(dstData) + length > len(srcData):
-                error(
+                sys.exit(
                     "SourceRead: tried to read from invalid position in input "
-                    "data"
+                    "data."
                 )
             dstData.extend(srcData[len(dstData):len(dstData)+length])
             srcReadBlkCnt += 1
@@ -121,9 +116,9 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             # "SourceCopy" - copy from any address in source
             srcOffset += bps_decode_signed(bps_read_int(patchHnd))
             if srcOffset < 0 or srcOffset + length > len(srcData):
-                error(
+                sys.exit(
                     "SourceCopy: tried to read from invalid position in input "
-                    "data"
+                    "data."
                 )
             dstData.extend(srcData[srcOffset:srcOffset+length])
             srcOffset += length
@@ -133,9 +128,9 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             # "TargetCopy" - copy from any address in target
             dstOffset += bps_decode_signed(bps_read_int(patchHnd))
             if not 0 <= dstOffset < len(dstData):
-                error(
+                sys.exit(
                     "TargetCopy: tried to read from invalid position in "
-                    "output data"
+                    "output data."
                 )
             # can't copy all in one go because newly-added bytes may also be
             # read
@@ -151,7 +146,7 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             f"{srcCopyByteCnt}/{trgCopyByteCnt} bytes in "
             f"{srcReadBlkCnt}/{trgReadBlkCnt}/"
             f"{srcCopyBlkCnt}/{trgCopyBlkCnt} blocks of type "
-            "SourceRead/TargetRead/SourceCopy/TargetCopy"
+            "SourceRead/TargetRead/SourceCopy/TargetCopy."
         )
 
     return dstData
@@ -172,33 +167,42 @@ def bps_apply(origHnd, patchHnd, args):
     # header - file format id
     id_ = read_bytes(4, patchHnd)
     if id_[:3] != b"BPS":
-        error("not a BPS file")
+        sys.exit("Not a BPS file.")
     if id_[3:] != b"1":
-        warn("possibly unsupported version of BPS")
+        print(
+            "Warning: possibly unsupported version of BPS file.",
+            file=sys.stderr
+        )
 
     # header - file sizes
     hdrSrcSize = bps_read_int(patchHnd)
     hdrDstSize = bps_read_int(patchHnd)
     if args.verbose:
-        print(f"expected file sizes: input={hdrSrcSize}, output={hdrDstSize}")
+        print(f"Expected file sizes: input={hdrSrcSize}, output={hdrDstSize}.")
     if hdrSrcSize != len(srcData):
-        warn(f"input file size should be {hdrSrcSize}")
+        print(
+            f"Warning: input file size should be {hdrSrcSize}.",
+            file=sys.stderr
+        )
 
     # header - metadata
     metadataSize = bps_read_int(patchHnd)
     if metadataSize:
         metadata = read_bytes(metadataSize, patchHnd)
         if args.verbose:
-            print("metadata:", metadata.decode("ascii", errors="replace"))
+            print("Metadata:", metadata.decode("ascii", errors="replace"))
     elif args.verbose:
-        print("no metadata")
+        print("No metadata.")
 
     # create output data by repeatedly appending data
     dstData = bps_decode_blocks(srcData, patchHnd, args.verbose)
 
     # validate output size
     if hdrDstSize != len(dstData):
-        warn(f"output file size should be {hdrDstSize}")
+        print(
+            f"Warning: output file size should be {hdrDstSize}.",
+            file=sys.stderr
+        )
 
     # validate CRCs from footer
     footer = read_bytes(3 * 4, patchHnd)
@@ -207,15 +211,15 @@ def bps_apply(origHnd, patchHnd, args):
     )
     if args.verbose:
         print(
-            "expected CRC32s: input={:08x}, output={:08x}, patch={:08x}"
+            "Expected CRC32s: input={:08x}, output={:08x}, patch={:08x}."
             .format(*expectedCrcs)
         )
     if expectedCrcs[0] != crc32(srcData):
-        warn("input file CRC mismatch")
+        print("Warning: input file CRC mismatch.", file=sys.stderr)
     if expectedCrcs[1] != crc32(dstData):
-        warn("output file CRC mismatch")
+        print("Warning: output file CRC mismatch.", file=sys.stderr)
     if expectedCrcs[2] != patchCrc:
-        warn("patch file CRC mismatch")
+        print("Warning: patch file CRC mismatch.", file=sys.stderr)
 
     return dstData
 
@@ -240,9 +244,9 @@ def ips_generate_blocks(hnd):
             # RLE
             length = ips_decode_int(read_bytes(2, hnd))
             if length < 3:
-                warn(
-                    "RLE block has less than three bytes; suboptimal encoding "
-                    "or corrupt patch?"
+                print(
+                    "Warning: RLE block has less than 3 bytes; patch may be "
+                    "corrupt.", file=sys.stderr
                 )
             yield (offset, length, True, read_bytes(1, hnd))
         else:
@@ -258,18 +262,18 @@ def ips_apply(origHnd, patchHnd, args):
     data = bytearray(origHnd.read())
 
     if args.verbose:
-        print(f"CRC32 of input file: {crc32(data):08x}")
+        print(f"CRC32 of input file: {crc32(data):08x}.")
 
     patchHnd.seek(0)
 
     if read_bytes(5, patchHnd) != b"PATCH":
-        error("not an IPS file")
+        sys.exit("Not an IPS file.")
 
     rleBlockCnt = nonRleBlockCnt = rleByteCnt = nonRleByteCnt = 0  # statistics
 
     for (offset, length, isRle, blockData) in ips_generate_blocks(patchHnd):
         if offset > len(data):
-            error("tried to write past end of data")
+            sys.exit("Tried to write past end of data.")
         data[offset:offset+length] = length * blockData if isRle else blockData
         if isRle:
             rleBlockCnt += 1
@@ -282,9 +286,9 @@ def ips_apply(origHnd, patchHnd, args):
         print(
             f"{rleByteCnt}/{nonRleByteCnt} bytes "
             f"in {rleBlockCnt}/{nonRleBlockCnt} "
-            "blocks of type RLE/non-RLE"
+            "blocks of type RLE/non-RLE."
         )
-        print(f"CRC32 of output file: {crc32(data):08x}")
+        print(f"CRC32 of output file: {crc32(data):08x}.")
 
     return data
 
@@ -302,7 +306,7 @@ def main():
             else:
                 patchedData = ips_apply(origHnd, patchHnd, args)
     except OSError:
-        error("error reading input files")
+        sys.exit("Error reading input files.")
 
     # write patched data
     try:
@@ -310,6 +314,6 @@ def main():
             handle.seek(0)
             handle.write(patchedData)
     except OSError:
-        error("error writing output file")
+        sys.exit("Error writing output file.")
 
 main()

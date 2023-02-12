@@ -4,9 +4,6 @@ from zlib import crc32
 BPS_SOURCE_READ = 0
 BPS_TARGET_READ = 1
 
-def error(msg):
-    sys.exit(f"Error: {msg}")
-
 def get_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
 
@@ -46,18 +43,18 @@ def parse_args():
     args = parser.parse_args()
 
     if not 0 <= args.max_unchanged <= 10:
-        error("invalid '--max-unchanged' value")
+        sys.exit("Invalid '--max-unchanged' value.")
     if not 1 <= args.ips_min_rle_length <= 10:
-        error("invalid '--ips-min-rle-length' value")
+        sys.exit("Invalid '--ips-min-rle-length' value.")
     if get_ext(args.patch_file) not in (".bps", ".ips"):
-        error("unsupported patch file format")
+        sys.exit("Unsupported patch file format.")
 
     if not os.path.isfile(args.orig_file):
-        error("original file not found")
+        sys.exit("Original file not found.")
     if not os.path.isfile(args.modified_file):
-        error("modified file not found")
+        sys.exit("Modified file not found.")
     if os.path.exists(args.patch_file):
-        error("output file already exists")
+        sys.exit("Output file already exists.")
 
     return args
 
@@ -236,9 +233,9 @@ def ips_create(handle1, handle2, args):
     handle1.seek(0)
     origData = handle1.read()
     if len(origData) > 2 ** 24:
-        error(
-            "creating an IPS patch from files larger than 16 MiB is not "
-            "supported"
+        sys.exit(
+            "Creating an IPS patch from files larger than 16 MiB is not "
+            "supported."
         )
 
     handle2.seek(0)
@@ -287,7 +284,7 @@ def main():
         with open(args.orig_file, "rb") as handle1, \
         open(args.modified_file, "rb") as handle2:
             if handle1.seek(0, 2) != handle2.seek(0, 2):
-                error("input files of different size are not supported")
+                sys.exit("Input files of different size are not supported.")
             patch = bytearray()
             if get_ext(args.patch_file) == ".bps":
                 for bytes_ in bps_create(handle1, handle2, args):
@@ -297,7 +294,7 @@ def main():
                 for bytes_ in ips_create(handle1, handle2, args):
                     patch.extend(bytes_)
     except OSError:
-        error("could not read some of the input files")
+        sys.exit("Error reading input files.")
 
     # write patch data
     try:
@@ -305,8 +302,8 @@ def main():
             handle.seek(0)
             handle.write(patch)
             if args.verbose:
-                print(f"{handle.tell()} bytes written")
+                print(f"{handle.tell()} bytes written.")
     except OSError:
-        error("could not write output file")
+        sys.exit("Error writing output file.")
 
 main()
