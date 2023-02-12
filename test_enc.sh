@@ -6,7 +6,7 @@
 clear
 rm -f test-out/*
 
-echo "=== Create BPS patches (1 verbosely) ==="
+echo "=== Create BPS patches ==="
 python3 qromp_enc.py test-in-orig/megaman1u.nes \
     test-in-patched/megaman1u-fin.nes test-out/megaman1u-fin.bps
 python3 qromp_enc.py test-in-orig/megaman4u.nes \
@@ -14,7 +14,7 @@ python3 qromp_enc.py test-in-orig/megaman4u.nes \
 python3 qromp_enc.py test-in-orig/smb1e.nes \
     test-in-patched/smb1e-fin.nes test-out/smb1e-fin.bps
 python3 qromp_enc.py test-in-orig/smb2e.nes \
-    test-in-patched/smb2e-fin.nes test-out/smb2e-fin.bps -v
+    test-in-patched/smb2e-fin.nes test-out/smb2e-fin.bps
 python3 qromp_enc.py test-in-orig/smb3e.nes \
     test-in-patched/smb3e-fin-bps.nes test-out/smb3e-fin.bps
 echo "Original:"
@@ -23,14 +23,14 @@ echo "Created:"
 ls -l test-out/*.bps
 echo
 
-echo "=== Create IPS patches (1 verbosely) ==="
+echo "=== Create IPS patches ==="
 python3 qromp_enc.py test-in-orig/ducktales-e.nes \
     test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin.ips
 python3 qromp_enc.py test-in-orig/ducktales-e.nes \
-    test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin-u2-r4.ips \
-    -u2 -r4
+    test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin-u2.ips \
+    --ips-max-unchg 2
 python3 qromp_enc.py test-in-orig/megaman2u.nes \
-    test-in-patched/megaman2u-fin.nes test-out/megaman2u-fin.ips -v
+    test-in-patched/megaman2u-fin.nes test-out/megaman2u-fin.ips
 python3 qromp_enc.py test-in-orig/smb3e.nes \
     test-in-patched/smb3e-fin-ips.nes test-out/smb3e-fin.ips
 echo "Original:"
@@ -39,7 +39,7 @@ echo "Created:"
 ls -l test-out/*.ips
 echo
 
-echo "=== Apply patches, verify patched files (2 missing files expected) ==="
+echo "=== Apply patches, verify patched files ==="
 # apply BPS
 python3 qromp.py test-in-orig/megaman1u.nes \
     test-out/megaman1u-fin.bps test-out/megaman1u-fin.nes
@@ -55,13 +55,13 @@ python3 qromp.py test-in-orig/smb3e.nes \
 python3 qromp.py test-in-orig/ducktales-e.nes \
     test-out/ducktales-e-fin.ips test-out/ducktales-e-fin.nes
 python3 qromp.py test-in-orig/ducktales-e.nes \
-    test-out/ducktales-e-fin-u2-r4.ips test-out/ducktales-e-fin-u2-r4.nes
+    test-out/ducktales-e-fin-u2.ips test-out/ducktales-e-fin-u2.nes
 python3 qromp.py test-in-orig/megaman2u.nes \
     test-out/megaman2u-fin.ips test-out/megaman2u-fin.nes
 python3 qromp.py test-in-orig/smb3e.nes \
     test-out/smb3e-fin.ips test-out/smb3e-fin-ips.nes
 # verify
-md5sum -c --quiet patched.md5
+md5sum -c --quiet test_enc.md5
 echo
 
 echo "=== Five distinct errors ==="

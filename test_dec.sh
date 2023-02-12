@@ -35,8 +35,8 @@ python3 qromp.py test-in-orig/smb1e.nes \
     test-in-patch/nop.ips test-out/smb1e-nop.nes
 echo
 
-echo "=== Verify patched files (1 missing file expected) ==="
-md5sum -c --quiet patched.md5
+echo "=== Verify patched files ==="
+md5sum -c --quiet test_dec.md5
 echo
 
 echo "=== Five distinct errors ==="

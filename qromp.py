@@ -1,6 +1,13 @@
 import argparse, os, struct, sys
 from zlib import crc32
 
+# actions (types of BPS blocks); note that "source" and "target" here refer to
+# *encoder*'s input files
+BPS_SOURCE_READ = 0
+BPS_TARGET_READ = 1
+BPS_SOURCE_COPY = 2
+BPS_TARGET_COPY = 3
+
 def get_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
 
@@ -88,32 +95,33 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
     srcOffset = 0  # read offset in srcData (used by "SourceCopy" action)
     dstOffset = 0  # read offset in dstData (used by "TargetCopy" action)
 
-    # statistics
-    srcReadBlkCnt = trgReadBlkCnt = srcCopyBlkCnt = trgCopyBlkCnt = 0
-    srcReadByteCnt = trgReadByteCnt = srcCopyByteCnt = trgCopyByteCnt = 0
+    # statistics (source/target read/copy block/byte count)
+    srcRdBlks = trgRdBlks = srcCpBlks = trgCpBlks = 0
+    srcRdBytes = trgRdBytes = srcCpBytes = trgCpBytes = 0
 
     while patchHnd.tell() < patchSize - 3 * 4:
+        # get length and type of block
         lengthAndAction = bps_read_int(patchHnd)
         length = (lengthAndAction >> 2) + 1
         action = lengthAndAction & 3
 
-        if action == 0:
-            # "SourceRead" - copy from same address in source
+        if action == BPS_SOURCE_READ:
+            # copy from same address in original file
             if len(dstData) + length > len(srcData):
                 sys.exit(
                     "SourceRead: tried to read from invalid position in input "
                     "data."
                 )
             dstData.extend(srcData[len(dstData):len(dstData)+length])
-            srcReadBlkCnt += 1
-            srcReadByteCnt += length
-        elif action == 1:
-            # "TargetRead" - copy from patch
+            srcRdBlks += 1
+            srcRdBytes += length
+        elif action == BPS_TARGET_READ:
+            # copy from current address in patch
             dstData.extend(read_bytes(length, patchHnd))
-            trgReadBlkCnt += 1
-            trgReadByteCnt += length
-        elif action == 2:
-            # "SourceCopy" - copy from any address in source
+            trgRdBlks += 1
+            trgRdBytes += length
+        elif action == BPS_SOURCE_COPY:
+            # copy from any address in original file
             srcOffset += bps_decode_signed(bps_read_int(patchHnd))
             if srcOffset < 0 or srcOffset + length > len(srcData):
                 sys.exit(
@@ -122,10 +130,10 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
                 )
             dstData.extend(srcData[srcOffset:srcOffset+length])
             srcOffset += length
-            srcCopyBlkCnt += 1
-            srcCopyByteCnt += length
+            srcCpBlks += 1
+            srcCpBytes += length
         else:
-            # "TargetCopy" - copy from any address in target
+            # BPS_TARGET_COPY - copy from any address in patched file
             dstOffset += bps_decode_signed(bps_read_int(patchHnd))
             if not 0 <= dstOffset < len(dstData):
                 sys.exit(
@@ -137,15 +145,13 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             for i in range(length):
                 dstData.append(dstData[dstOffset])
                 dstOffset += 1
-            trgCopyBlkCnt += 1
-            trgCopyByteCnt += length
+            trgCpBlks += 1
+            trgCpBytes += length
 
     if verbose:
         print(
-            f"{srcReadByteCnt}/{trgReadByteCnt}/"
-            f"{srcCopyByteCnt}/{trgCopyByteCnt} bytes in "
-            f"{srcReadBlkCnt}/{trgReadBlkCnt}/"
-            f"{srcCopyBlkCnt}/{trgCopyBlkCnt} blocks of type "
+            f"{srcRdBytes}/{trgRdBytes}/{srcCpBytes}/{trgCpBytes} bytes in "
+            f"{srcRdBlks}/{trgRdBlks}/{srcCpBlks}/{trgCpBlks} blocks of type "
             "SourceRead/TargetRead/SourceCopy/TargetCopy."
         )
 
