@@ -8,26 +8,20 @@ Table of contents:
 
 ## qromp.py
 ```
-usage: qromp.py [-h] [-i INPUT_CRC] [-o OUTPUT_CRC] [-v]
-                orig_file patch_file output_file
+usage: qromp.py [-h] [-v] orig_file patch_file output_file
 
 Qalle's ROM Patcher. Applies a BPS/IPS patch to a file. Note: the IPS decoder
 has the 'EOF' address (0x454f46) bug.
 
 positional arguments:
-  orig_file             The original, unpatched file to read.
-  patch_file            The patch file (.bps/.ips) to read.
-  output_file           Patched copy of orig_file to write.
+  orig_file      The original, unpatched file to read.
+  patch_file     The patch file (.bps/.ips) to read.
+  output_file    Patched copy of orig_file to write.
 
 options:
-  -h, --help            show this help message and exit
-  -i INPUT_CRC, --input-crc INPUT_CRC
-                        Expected CRC32 checksum (zlib variety) of orig_file. 8
-                        hexadecimal digits.
-  -o OUTPUT_CRC, --output-crc OUTPUT_CRC
-                        Expected CRC32 checksum (zlib variety) of output_file.
-                        8 hexadecimal digits.
-  -v, --verbose         Print more info.
+  -h, --help     show this help message and exit
+  -v, --verbose  Print more info. (CRC32 checksums are of zlib variety and
+                 hexadecimal.)
 ```
 
 ## qromp_enc.py

@@ -33,17 +33,9 @@ def parse_args():
     )
 
     parser.add_argument(
-        "-i", "--input-crc", type=str,
-        help="Expected CRC32 checksum (zlib variety) of orig_file. 8 "
-        "hexadecimal digits."
-    )
-    parser.add_argument(
-        "-o", "--output-crc", type=str,
-        help="Expected CRC32 checksum (zlib variety) of output_file. 8 "
-        "hexadecimal digits."
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Print more info."
+        "-v", "--verbose", action="store_true",
+        help="Print more info. (CRC32 checksums are of zlib variety and "
+        "hexadecimal.)"
     )
 
     parser.add_argument(
@@ -57,13 +49,6 @@ def parse_args():
     )
 
     args = parser.parse_args()
-
-    try:
-        for crc in (args.input_crc, args.output_crc):
-            if crc is not None and not 0 <= int(crc, 16) <= 0xffff_ffff:
-                raise ValueError
-    except ValueError:
-        error("invalid CRC32 specified")
 
     if get_ext(args.patch_file) not in (".bps", ".ips"):
         error("unsupported patch file format")
@@ -222,7 +207,7 @@ def bps_apply(origHnd, patchHnd, args):
     )
     if args.verbose:
         print(
-            "expected CRCs: input={:08x}, output={:08x}, patch={:08x}"
+            "expected CRC32s: input={:08x}, output={:08x}, patch={:08x}"
             .format(*expectedCrcs)
         )
     if expectedCrcs[0] != crc32(srcData):
@@ -272,8 +257,8 @@ def ips_apply(origHnd, patchHnd, args):
     origHnd.seek(0)
     data = bytearray(origHnd.read())
 
-    if args.input_crc is not None and int(args.input_crc, 16) != crc32(data):
-        warn(f"input file CRC mismatch")
+    if args.verbose:
+        print(f"CRC32 of input file: {crc32(data):08x}")
 
     patchHnd.seek(0)
 
@@ -299,9 +284,7 @@ def ips_apply(origHnd, patchHnd, args):
             f"in {rleBlockCnt}/{nonRleBlockCnt} "
             "blocks of type RLE/non-RLE"
         )
-
-    if args.output_crc is not None and int(args.output_crc, 16) != crc32(data):
-        warn(f"output file CRC mismatch")
+        print(f"CRC32 of output file: {crc32(data):08x}")
 
     return data
 

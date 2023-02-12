@@ -1,14 +1,13 @@
 # Warning: this script deletes files. Run at your own risk.
-# .nes files: "e" = European, "u" = USA
-# most patches are from Romhacking.net ("fin" = Finnish translation)
-# "nop.ips" contains just "PATCHEOF"
+# .nes files: "e" = European, "u" = USA.
+# Most patches are from Romhacking.net ("fin" = Finnish translation).
+# "nop.ips" contains just "PATCHEOF".
+# Note: Mega Man 3 Finnish patch doesn't work with any ROM I have.
 
 clear
-
 rm -f test-out/*
 
 echo "=== Apply BPS patches (1 verbosely) ==="
-# note: Mega Man 3 Finnish patch doesn't work with any ROM I have
 python3 qromp.py test-in-orig/megaman1u.nes \
     test-in-patch/megaman1u-fin.bps test-out/megaman1u-fin.nes
 python3 qromp.py test-in-orig/megaman4u.nes \
@@ -22,33 +21,25 @@ python3 qromp.py test-in-orig/smb3e.nes \
 echo
 
 echo "=== Apply IPS patches (1 verbosely) ==="
-# note: expected CRCs of output files are from files patched with
-# Romhacking.net online patcher
 python3 qromp.py test-in-orig/ducktales-e.nes \
-    test-in-patch/ducktales-e-fin.ips test-out/ducktales-e-fin.nes \
-    -i e3202b75 -o d776dd64 -v
+    test-in-patch/ducktales-e-fin.ips test-out/ducktales-e-fin.nes -v
 python3 qromp.py test-in-orig/megaman2u.nes \
-    test-in-patch/megaman2u-fin.ips test-out/megaman2u-fin.nes \
-    -i 5e268761 -o b094f9a6
+    test-in-patch/megaman2u-fin.ips test-out/megaman2u-fin.nes
 python3 qromp.py test-in-orig/smb3e.nes \
-    test-in-patch/smb3e-fin.ips test-out/smb3e-fin-ips.nes \
-    -i 3bc2e2df -o 89bcc1f9
+    test-in-patch/smb3e-fin.ips test-out/smb3e-fin-ips.nes
 python3 qromp.py test-in-orig/smb3u.nes \
-    test-in-patch/smb3u-marioadv.ips test-out/smb3u-marioadv.nes \
-    -i 0B742B33 -o 2E6D3FDC  # uppercase CRCs
+    test-in-patch/smb3u-marioadv.ips test-out/smb3u-marioadv.nes
 python3 qromp.py test-in-orig/smb3u.nes \
-    test-in-patch/smb3u-mix.ips test-out/smb3u-mix.nes \
-    -i 0b742b33 -o 16b3fe50
+    test-in-patch/smb3u-mix.ips test-out/smb3u-mix.nes
 python3 qromp.py test-in-orig/smb1e.nes \
-    test-in-patch/nop.ips test-out/smb1e-nop.nes \
-    -i 7d5faa58 -o 7d5faa58  # no change
+    test-in-patch/nop.ips test-out/smb1e-nop.nes
 echo
 
 echo "=== Verify patched files (1 missing file expected) ==="
 md5sum -c --quiet patched.md5
 echo
 
-echo "=== Six distinct errors ==="
+echo "=== Five distinct errors ==="
 python3 qromp.py nonexistent \
     test-in-patch/smb1e-fin.bps test-out/temp1.nes
 python3 qromp.py test-in-orig/smb1e.nes \
@@ -58,20 +49,12 @@ python3 qromp.py test-in-orig/smb1e.nes \
 python3 qromp.py test-in-orig/smb1e.nes \
     test-in-patch/smb1e-fin.bps test-in-orig/smb1e.nes  # already exists
 python3 qromp.py test-in-orig/smb1e.nes \
-    test-in-patch/smb1e-fin.bps test-out/temp4.nes -i xxxxxxxx  # invalid CRC
-python3 qromp.py test-in-orig/smb1e.nes \
     test-in-patch/ducktales-e-fin.ips test-out/temp5.nes  # write past EOF
 echo
 
-echo "=== Three size/CRC warnings ==="
+echo "=== Five size/CRC warnings ==="
 python3 qromp.py test-in-orig/ducktales-e.nes \
     test-in-patch/smb1e-fin.bps test-out/temp6.nes
-echo
-
-echo "=== Four CRC warnings ==="
 python3 qromp.py test-in-orig/ducktales-e.nes \
     test-in-patch/megaman1u-fin.bps test-out/temp7.nes
-python3 qromp.py test-in-orig/ducktales-e.nes \
-    test-in-patch/ducktales-e-fin.ips test-out/temp8.nes \
-    -i deadbeef -o deadbeef
 echo
