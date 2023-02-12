@@ -7,7 +7,7 @@ clear
 
 rm -f test-out/*
 
-echo "=== Apply BPS patches ==="
+echo "=== Apply BPS patches (1 verbosely) ==="
 # note: Mega Man 3 Finnish patch doesn't work with any ROM I have
 python3 qromp.py test-in-orig/megaman1u.nes \
     test-in-patch/megaman1u-fin.bps test-out/megaman1u-fin.nes
@@ -21,7 +21,7 @@ python3 qromp.py test-in-orig/smb3e.nes \
     test-in-patch/smb3e-fin.bps test-out/smb3e-fin-bps.nes
 echo
 
-echo "=== Apply IPS patches ==="
+echo "=== Apply IPS patches (1 verbosely) ==="
 # note: expected CRCs of output files are from files patched with
 # Romhacking.net online patcher
 python3 qromp.py test-in-orig/ducktales-e.nes \
@@ -44,10 +44,8 @@ python3 qromp.py test-in-orig/smb1e.nes \
     -i 7d5faa58 -o 7d5faa58  # no change
 echo
 
-echo "=== Verify patched files ==="
-cd test-out
-md5sum -c --ignore-missing --quiet ../patched.md5
-cd ..
+echo "=== Verify patched files (1 missing file expected) ==="
+md5sum -c --quiet patched.md5
 echo
 
 echo "=== Six distinct errors ==="

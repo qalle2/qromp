@@ -1,13 +1,18 @@
 # Warning: this script deletes files. Run at your own risk.
 # TODO: more test cases for the IPS encoder
+# Note: can't test smb3u-marioadv and smb3u-mix because files of different size
+# are not supported.
 
 clear
-
 rm -f test-out/*
 
-echo "=== Create BPS patches ==="
+echo "=== Create BPS patches (1 verbosely) ==="
+python3 qromp_enc.py test-in-orig/megaman1u.nes \
+    test-in-patched/megaman1u-fin.nes test-out/megaman1u-fin.bps
 python3 qromp_enc.py test-in-orig/megaman4u.nes \
     test-in-patched/megaman4u-fin.nes test-out/megaman4u-fin.bps
+python3 qromp_enc.py test-in-orig/smb1e.nes \
+    test-in-patched/smb1e-fin.nes test-out/smb1e-fin.bps
 python3 qromp_enc.py test-in-orig/smb2e.nes \
     test-in-patched/smb2e-fin.nes test-out/smb2e-fin.bps -v
 python3 qromp_enc.py test-in-orig/smb3e.nes \
@@ -18,7 +23,7 @@ echo "Created:"
 ls -l test-out/*.bps
 echo
 
-echo "=== Create IPS patches ==="
+echo "=== Create IPS patches (1 verbosely) ==="
 python3 qromp_enc.py test-in-orig/ducktales-e.nes \
     test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin.ips
 python3 qromp_enc.py test-in-orig/ducktales-e.nes \
@@ -34,10 +39,14 @@ echo "Created:"
 ls -l test-out/*.ips
 echo
 
-echo "=== Apply patches and verify patched files ==="
+echo "=== Apply patches, verify patched files (2 missing files expected) ==="
 # apply BPS
+python3 qromp.py test-in-orig/megaman1u.nes \
+    test-out/megaman1u-fin.bps test-out/megaman1u-fin.nes
 python3 qromp.py test-in-orig/megaman4u.nes \
     test-out/megaman4u-fin.bps test-out/megaman4u-fin.nes
+python3 qromp.py test-in-orig/smb1e.nes \
+    test-out/smb1e-fin.bps test-out/smb1e-fin.nes
 python3 qromp.py test-in-orig/smb2e.nes \
     test-out/smb2e-fin.bps test-out/smb2e-fin.nes
 python3 qromp.py test-in-orig/smb3e.nes \
@@ -52,9 +61,7 @@ python3 qromp.py test-in-orig/megaman2u.nes \
 python3 qromp.py test-in-orig/smb3e.nes \
     test-out/smb3e-fin.ips test-out/smb3e-fin-ips.nes
 # verify
-cd test-out
-md5sum -c --ignore-missing --quiet ../patched.md5
-cd ..
+md5sum -c --quiet patched.md5
 echo
 
 echo "=== Five distinct errors ==="

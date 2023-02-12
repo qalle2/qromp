@@ -1,6 +1,11 @@
 # Qalle's ROM Patcher / Qalle's ROM Patch Creator
 Apply a BPS/IPS patch to a binary file or create a BPS/IPS patch file from the differences of two binary files.
 
+Table of contents:
+* [qromp.py](#qromppy)
+* [qromp_enc.py](#qromp_encpy)
+* [Other files](#other-files)
+
 ## qromp.py
 ```
 usage: qromp.py [-h] [-i INPUT_CRC] [-o OUTPUT_CRC] [-v]
@@ -51,3 +56,6 @@ options:
                         in IPS patches. 1-10, default=6. Other values may
                         reduce patch size.
 ```
+
+## Other files
+* `patched.md5`: MD5 hashes of correctly-patched test files
