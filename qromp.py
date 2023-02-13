@@ -8,17 +8,17 @@ BPS_TARGET_READ = 1
 BPS_SOURCE_COPY = 2
 BPS_TARGET_COPY = 3
 
-def get_ext(path):
+def get_file_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
 
-def get_file_size(hnd):
+def get_file_size(handle):
     # get file size without disturbing file handle position
-    return os.stat(hnd.fileno()).st_size
+    return os.stat(handle.fileno()).st_size
 
-def read_bytes(n, hnd):
-    # return n bytes from handle or exit on EOF
+def read_bytes(n, handle):
+    # return n bytes from handle
     try:
-        data = hnd.read(n)
+        data = handle.read(n)
     except MemoryError:
         sys.exit("Out of memory. (Corrupt patch file?)")
     if len(data) < n:
@@ -51,7 +51,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if get_ext(args.patch_file) not in (".bps", ".ips"):
+    if get_file_ext(args.patch_file) not in (".bps", ".ips"):
         sys.exit("Unsupported patch file format.")
 
     if not os.path.isfile(args.orig_file):
@@ -65,7 +65,7 @@ def parse_args():
 
 # -----------------------------------------------------------------------------
 
-def bps_read_int(hnd):
+def bps_read_int(handle):
     # read an unsigned BPS integer starting from current file position
     # final byte has MSB set, all other bytes have MSB clear
     # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14)
@@ -73,7 +73,7 @@ def bps_read_int(hnd):
     decoded = 0
     shift = 0
     while True:
-        byte = read_bytes(1, hnd)[0]
+        byte = read_bytes(1, handle)[0]
         decoded += (byte & 0x7f) << shift
         if byte & 0x80:
             break
@@ -81,8 +81,9 @@ def bps_read_int(hnd):
         decoded += 1 << shift
     return decoded
 
-def bps_decode_signed(n):
-    # decode a signed BPS integer
+def bps_read_signed_int(handle):
+    # read a signed BPS integer
+    n = bps_read_int(handle)
     return (-1 if n & 1 else 1) * (n >> 1)
 
 def bps_decode_blocks(srcData, patchHnd, verbose):
@@ -92,8 +93,8 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
     patchSize = get_file_size(patchHnd)
 
     dstData = bytearray()  # output data
-    srcOffset = 0  # read offset in srcData (used by "SourceCopy" action)
-    dstOffset = 0  # read offset in dstData (used by "TargetCopy" action)
+    srcOffset = 0  # read offset in srcData (used by BPS_SOURCE_COPY)
+    dstOffset = 0  # read offset in dstData (used by BPS_TARGET_COPY)
 
     # statistics (source/target read/copy block/byte count)
     srcRdBlks = trgRdBlks = srcCpBlks = trgCpBlks = 0
@@ -122,7 +123,7 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             trgRdBytes += length
         elif action == BPS_SOURCE_COPY:
             # copy from any address in original file
-            srcOffset += bps_decode_signed(bps_read_int(patchHnd))
+            srcOffset += bps_read_signed_int(patchHnd)
             if srcOffset < 0 or srcOffset + length > len(srcData):
                 sys.exit(
                     "SourceCopy: tried to read from invalid position in input "
@@ -134,7 +135,7 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             srcCpBytes += length
         else:
             # BPS_TARGET_COPY - copy from any address in patched file
-            dstOffset += bps_decode_signed(bps_read_int(patchHnd))
+            dstOffset += bps_read_signed_int(patchHnd)
             if not 0 <= dstOffset < len(dstData):
                 sys.exit(
                     "TargetCopy: tried to read from invalid position in "
@@ -235,29 +236,29 @@ def ips_decode_int(bytes_):
     # decode an IPS integer (unsigned, most significant byte first)
     return sum(b << (8 * i) for (i, b) in enumerate(bytes_[::-1]))
 
-def ips_generate_blocks(hnd):
+def ips_generate_blocks(handle):
     # read IPS file starting from after header
     # generate each block as (offset, length, is_RLE, data); for RLE blocks,
     # data is one byte
 
     while True:
-        blockPos = hnd.tell()
-        offset = ips_decode_int(read_bytes(3, hnd))
+        blockPos = handle.tell()
+        offset = ips_decode_int(read_bytes(3, handle))
         if offset == 0x454f46:  # "EOF"
             break
-        length = ips_decode_int(read_bytes(2, hnd))
+        length = ips_decode_int(read_bytes(2, handle))
         if length == 0:
             # RLE
-            length = ips_decode_int(read_bytes(2, hnd))
+            length = ips_decode_int(read_bytes(2, handle))
             if length < 3:
                 print(
                     "Warning: RLE block has less than 3 bytes; patch may be "
                     "corrupt.", file=sys.stderr
                 )
-            yield (offset, length, True, read_bytes(1, hnd))
+            yield (offset, length, True, read_bytes(1, handle))
         else:
             # non-RLE
-            yield (offset, length, False, read_bytes(length, hnd))
+            yield (offset, length, False, read_bytes(length, handle))
 
 def ips_apply(origHnd, patchHnd, args):
     # apply IPS patch from patchHnd to origHnd, return patched data
@@ -307,7 +308,7 @@ def main():
     try:
         with open(args.orig_file, "rb") as origHnd, \
         open(args.patch_file, "rb") as patchHnd:
-            if get_ext(args.patch_file) == ".bps":
+            if get_file_ext(args.patch_file) == ".bps":
                 patchedData = bps_apply(origHnd, patchHnd, args)
             else:
                 patchedData = ips_apply(origHnd, patchHnd, args)

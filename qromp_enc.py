@@ -5,10 +5,10 @@ from zlib import crc32
 # encoder's input files
 BPS_SOURCE_READ = 0
 BPS_TARGET_READ = 1
-BPS_SOURCE_COPY = 2  # unused atm
+BPS_SOURCE_COPY = 2
 BPS_TARGET_COPY = 3  # unused atm
 
-def get_ext(path):
+def get_file_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
 
 def parse_args():
@@ -41,7 +41,7 @@ def parse_args():
 
     if not 0 <= args.ips_max_unchg <= 10:
         sys.exit("Invalid '--ips-max-unchg' value.")
-    if get_ext(args.patch_file) not in (".bps", ".ips"):
+    if get_file_ext(args.patch_file) not in (".bps", ".ips"):
         sys.exit("Unsupported patch file format.")
 
     if not os.path.isfile(args.orig_file):
@@ -99,10 +99,9 @@ def bps_find_substrings(str1, str2):
         yield (startPos, len(str1) - startPos)
 
 def bps_create(handle1, handle2):
-    # create a BPS patch from the differences of handle1 and handle2;
+    # create a BPS patch from the difference of two files;
     # generate patch data except for patch CRC at the end;
-    # note: inefficient; doesn't use the "SourceCopy" and "TargetCopy" actions
-    # at all
+    # note: doesn't use the "TargetCopy" action at all
 
     handle1.seek(0)
     data1 = handle1.read()
@@ -148,46 +147,40 @@ def bps_create(handle1, handle2):
 
 # -----------------------------------------------------------------------------
 
-def ips_get_blocks(data1, data2, maxLen=None):
-    # generate (start, length) of blocks that differ; maxLen = maximum length
+def ips_get_blocks(data1, data2):
+    # generate (start, length) of blocks that differ
 
-    start = None  # start position of current block
+    start = -1  # start position of current block (-1 = none)
 
     for (pos, (byte1, byte2)) in enumerate(zip(data1, data2)):
-        if start is None and byte1 != byte2:
+        if start == -1 and byte1 != byte2:
             # start a block
             start = pos
-        elif start is not None and byte1 == byte2:
+        elif start != -1 and byte1 == byte2:
             # end a block
             yield (start, pos - start)
-            start = None
-        elif start is not None and maxLen is not None \
-        and pos - start == maxLen:
+            start = -1
+        elif start != -1 and pos - start == 0xffff:
             # end a block and start a new one
             yield (start, pos - start)
             start = pos
 
-    if start is not None:
+    if start != -1:
         # end the last block
         yield (start, len(data1) - start)
 
-def ips_get_optimized_blocks(data1, data2, maxGap, maxLen=None):
-    # generate ((start, length), ...) of blocks that differ, with some blocks
-    # possibly merged;
+def ips_get_optimized_blocks(data1, data2, maxGap):
+    # generate (start, length) of blocks that differ, with some blocks merged;
     # maxGap: maximum number of unchanged bytes between two merged blocks
-    # maxLen: maximum length of merged blocks
 
     blockBuf = []  # blocks not generated yet
-    for (start, length) in ips_get_blocks(data1, data2, maxLen):
+    for (start, length) in ips_get_blocks(data1, data2):
         blockBuf.append((start, length))
         # if gap between last two blocks is more than one byte
         # or if the whole buffer is too large...
         if len(blockBuf) >= 2 and (
             blockBuf[-1][0] - sum(blockBuf[-2]) > maxGap
-            or (
-                maxLen is not None
-                and sum(blockBuf[-1]) - blockBuf[0][0] > maxLen
-            )
+            or sum(blockBuf[-1]) - blockBuf[0][0] > 0xffff
         ):
             # ...output all but the last block as one and delete from buffer
             yield (blockBuf[0][0], sum(blockBuf[-2]) - blockBuf[0][0])
@@ -200,7 +193,6 @@ def ips_get_optimized_blocks(data1, data2, maxGap, maxLen=None):
 def ips_encode_int(n, byteCnt):
     # encode an IPS integer (unsigned, most significant byte first)
 
-    assert n < 0x100 ** byteCnt
     return bytes((n >> s) & 0xff for s in range((byteCnt - 1) * 8, -8, -8))
 
 def ips_generate_subblocks(data1, data2, args):
@@ -208,7 +200,7 @@ def ips_generate_subblocks(data1, data2, args):
     # generate (start, length, is_RLE)
 
     for (blkStart, blkLen) in ips_get_optimized_blocks(
-        data1, data2, args.ips_max_unchg, 0xffff
+        data1, data2, args.ips_max_unchg
     ):
         block = data2[blkStart:blkStart+blkLen]
         # split block into RLE/non-RLE subblocks; e.g. ABBCCCCDDDDDEF -> ABB,
@@ -239,9 +231,8 @@ def ips_generate_subblocks(data1, data2, args):
                     subStart = subPos
 
 def ips_create(handle1, handle2, args):
-    # create an IPS patch from the differences of handle1 and handle2; generate
-    # patch data
-    # note: has the "EOF" address (0x454f46) bug
+    # create an IPS patch from the differences of handle1 and handle2;
+    # generate patch data; note: has the "EOF" address (0x454f46) bug
 
     handle1.seek(0)
     origData = handle1.read()
@@ -282,7 +273,7 @@ def main():
             if handle1.seek(0, 2) != handle2.seek(0, 2):
                 sys.exit("Input files of different size are not supported.")
             patch = bytearray()
-            if get_ext(args.patch_file) == ".bps":
+            if get_file_ext(args.patch_file) == ".bps":
                 for bytes_ in bps_create(handle1, handle2):
                     patch.extend(bytes_)
                 patch.extend(struct.pack("<L", crc32(patch)))
