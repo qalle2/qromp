@@ -2,11 +2,15 @@ import argparse, os, struct, sys
 from zlib import crc32
 
 # actions (types of BPS blocks); note that "source" and "target" here refer to
-# encoder's input files
+# encoder's *input* files
 BPS_SOURCE_READ = 0
 BPS_TARGET_READ = 1
 BPS_SOURCE_COPY = 2
 BPS_TARGET_COPY = 3  # unused atm
+
+# minimum length of IPS RLE blocks (this is a good value when --ips-max-unchg
+# is 1 or 2)
+IPS_MIN_RLE_LEN = 9
 
 def get_file_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
@@ -56,8 +60,8 @@ def parse_args():
 # -----------------------------------------------------------------------------
 
 def bps_encode_int(n):
-    # convert a nonnegative integer into BPS format; return bytes
-    # final byte has MSB set, all other bytes have MSB clear
+    # convert a nonnegative integer into BPS format; return bytes;
+    # final byte has MSB set, all other bytes have MSB clear;
     # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14)
     # = 0x29a92
 
@@ -78,30 +82,41 @@ def bps_block_start(length, action):
     # encode start of block
     return bps_encode_int(((length - 1) << 2) | action)
 
+def find_longest_prefix(str1, str2):
+    # return length of longest prefix of str1 that occurs anywhere in str2
+    # using binary search
+
+    minLen = 0  # lower limit found
+    maxLen = min(len(str1), len(str2))  # upper limit found
+
+    while True:
+        if minLen == maxLen:
+            return minLen
+        avgLen = (minLen + maxLen + 1) // 2
+        if str1[:avgLen] in str2:
+            minLen = avgLen
+        else:
+            maxLen = avgLen - 1
+
 def bps_find_substrings(str1, str2):
     # find substrings in str1 that occur anywhere in str2;
     # generate (start_in_str1, length);
     # e.g. "abcd", "cxab" -> (0, 2), (2, 1)
-    # this can take more than 10 seconds on my machine
+    # this can take ~5 seconds on my machine
 
-    startPos = -1  # start position in str1 (-1 = none)
-
-    for i in range(len(str1)):
-        if startPos == -1 and str1[i] in str2:
-            startPos = i
-        # check same position first for speed
-        elif startPos != -1 and str1[startPos:i+1] != str2[startPos:i+1] \
-        and str1[startPos:i+1] not in str2:
-            yield (startPos, i - startPos)
-            startPos = (i if str1[i] in str2 else -1)
-
-    if startPos != -1:
-        yield (startPos, len(str1) - startPos)
+    pos1 = 0  # position in str1
+    while pos1 < len(str1):
+        prefixLen = find_longest_prefix(str1[pos1:], str2)
+        if prefixLen:
+            yield (pos1, prefixLen)
+            pos1 += prefixLen
+        else:
+            pos1 += 1
 
 def bps_create(handle1, handle2):
     # create a BPS patch from the difference of two files;
     # generate patch data except for patch CRC at the end;
-    # note: doesn't use the "TargetCopy" action at all
+    # note: doesn't use the BPS_TARGET_COPY action at all
 
     handle1.seek(0)
     data1 = handle1.read()
@@ -176,8 +191,8 @@ def ips_get_optimized_blocks(data1, data2, maxGap):
     blockBuf = []  # blocks not generated yet
     for (start, length) in ips_get_blocks(data1, data2):
         blockBuf.append((start, length))
-        # if gap between last two blocks is more than one byte
-        # or if the whole buffer is too large...
+        # if gap between last two blocks is too large
+        # or the whole buffer is too large...
         if len(blockBuf) >= 2 and (
             blockBuf[-1][0] - sum(blockBuf[-2]) > maxGap
             or sum(blockBuf[-1]) - blockBuf[0][0] > 0xffff
@@ -192,10 +207,9 @@ def ips_get_optimized_blocks(data1, data2, maxGap):
 
 def ips_encode_int(n, byteCnt):
     # encode an IPS integer (unsigned, most significant byte first)
-
     return bytes((n >> s) & 0xff for s in range((byteCnt - 1) * 8, -8, -8))
 
-def ips_generate_subblocks(data1, data2, args):
+def ips_get_subblocks(data1, data2, args):
     # split blocks that differ into RLE and non-RLE subblocks;
     # generate (start, length, is_RLE)
 
@@ -203,14 +217,14 @@ def ips_generate_subblocks(data1, data2, args):
         data1, data2, args.ips_max_unchg
     ):
         block = data2[blkStart:blkStart+blkLen]
-        # split block into RLE/non-RLE subblocks; e.g. ABBCCCCDDDDDEF -> ABB,
-        # 4*C, 5*D, EF
-        # note: subPos has an extra value at the end for wrapping things up
+
+        # split block into RLE/non-RLE subblocks;
+        # e.g. ABBCCCCDDDDDEF -> ABB, 4*C, 5*D, EF
         subStart = 0  # start position of subblock within block
-        for subPos in range(blkLen + 1):
-            # if this byte differs from the previous one or is the last one...
-            if 0 < subPos < blkLen and block[subPos] != block[subPos-1] \
-            or subPos == blkLen:
+
+        for subPos in range(1, blkLen):
+            # if this byte differs from the previous one...
+            if block[subPos] != block[subPos-1]:
                 # output 0-2 subblocks (non-RLE, RLE, both in that order, or
                 # neither); the RLE part is the sequence of identical bytes at
                 # the end of the substring
@@ -218,17 +232,26 @@ def ips_generate_subblocks(data1, data2, args):
                     block[subStart:subPos].rstrip(block[subPos-1:subPos])
                 )
                 rleLen = subPos - subStart - nonRleLen
-                # don't create short RLE blocks (this is a good limit when
-                # --ips-max-unchg is 1 or 2)
-                if rleLen < 9:
+                # don't create short RLE blocks
+                if rleLen < IPS_MIN_RLE_LEN:
                     nonRleLen += rleLen
                     rleLen = 0
-                if rleLen or (nonRleLen and subPos == blkLen):
+                else:
                     if nonRleLen:
                         yield (blkStart + subStart, nonRleLen, False)
-                    if rleLen:
-                        yield (blkStart + subStart + nonRleLen, rleLen, True)
+                    yield (blkStart + subStart + nonRleLen, rleLen, True)
                     subStart = subPos
+
+        # same for the last byte in block
+        nonRleLen = len(block[subStart:].rstrip(block[-1:]))
+        rleLen = blkLen - subStart - nonRleLen
+        if rleLen < IPS_MIN_RLE_LEN:
+            nonRleLen += rleLen
+            rleLen = 0
+        if nonRleLen:
+            yield (blkStart + subStart, nonRleLen, False)
+        if rleLen:
+            yield (blkStart + subStart + nonRleLen, rleLen, True)
 
 def ips_create(handle1, handle2, args):
     # create an IPS patch from the differences of handle1 and handle2;
@@ -247,9 +270,7 @@ def ips_create(handle1, handle2, args):
 
     yield b"PATCH"  # file format id
 
-    for (start, length, isRle) in ips_generate_subblocks(
-        origData, newData, args
-    ):
+    for (start, length, isRle) in ips_get_subblocks(origData, newData, args):
         yield ips_encode_int(start, 3)
         if isRle:
             yield ips_encode_int(0, 2)

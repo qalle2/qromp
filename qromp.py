@@ -8,12 +8,12 @@ BPS_TARGET_READ = 1
 BPS_SOURCE_COPY = 2
 BPS_TARGET_COPY = 3
 
+# maximum unsigned integer to read from BPS file
+# (you may want to increase this in the future)
+BPS_MAX_UINT = 2 ** 64
+
 def get_file_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
-
-def get_file_size(handle):
-    # get file size without disturbing file handle position
-    return os.stat(handle.fileno()).st_size
 
 def read_bytes(n, handle):
     # return n bytes from handle
@@ -66,16 +66,17 @@ def parse_args():
 # -----------------------------------------------------------------------------
 
 def bps_read_int(handle):
-    # read an unsigned BPS integer starting from current file position
-    # final byte has MSB set, all other bytes have MSB clear
+    # read an unsigned BPS integer starting from current file position;
+    # final byte has MSB set, all other bytes have MSB clear;
     # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14)
     # = 0x29a92
-    decoded = 0
-    shift = 0
+    decoded = shift = 0
     while True:
         byte = read_bytes(1, handle)[0]
         decoded += (byte & 0x7f) << shift
-        if byte & 0x80:
+        if decoded > BPS_MAX_UINT:
+            sys.exit("BPS integer too large. (Corrupt patch?)")
+        elif byte & 0x80:
             break
         shift += 7
         decoded += 1 << shift
@@ -90,7 +91,8 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
     # decode blocks from BPS file (slices from input file, patch file or
     # previous output)
 
-    patchSize = get_file_size(patchHnd)
+    # get patch size without disturbing file handle position
+    patchSize = os.stat(patchHnd.fileno()).st_size
 
     dstData = bytearray()  # output data
     srcOffset = 0  # read offset in srcData (used by BPS_SOURCE_COPY)
@@ -142,10 +144,16 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
                     "output data."
                 )
             # can't copy all in one go because newly-added bytes may also be
-            # read
-            for i in range(length):
-                dstData.append(dstData[dstOffset])
-                dstOffset += 1
+            # read; this algorithm keeps doubling the chunk size as long as
+            # necessary
+            origDstOffset = dstOffset
+            finalDstOffset = dstOffset + length
+            while dstOffset < finalDstOffset:
+                chunkSize = min(
+                    finalDstOffset - dstOffset, len(dstData) - origDstOffset
+                )
+                dstData.extend(dstData[origDstOffset:origDstOffset+chunkSize])
+                dstOffset += chunkSize
             trgCpBlks += 1
             trgCpBytes += length
 
@@ -166,9 +174,9 @@ def bps_apply(origHnd, patchHnd, args):
     srcData = origHnd.read()
 
     # get CRC of patch (except for CRC at the end) for later use
+    patchSize = patchHnd.seek(0, 2)
     patchHnd.seek(0)
-    patchCrc = crc32(patchHnd.read(get_file_size(patchHnd) - 4))
-
+    patchCrc = crc32(patchHnd.read(patchSize - 4))
     patchHnd.seek(0)
 
     # header - file format id
@@ -242,7 +250,6 @@ def ips_generate_blocks(handle):
     # data is one byte
 
     while True:
-        blockPos = handle.tell()
         offset = ips_decode_int(read_bytes(3, handle))
         if offset == 0x454f46:  # "EOF"
             break
