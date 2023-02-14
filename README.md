@@ -49,8 +49,8 @@ options:
 usage: qromp_enc_bps.py [-h] [--min-copy MIN_COPY]
                         orig_file modified_file patch_file
 
-Qalle's BPS Patch Creator. Creates a BPS patch from differences of two files.
-Inefficient and slow. Prints a progress indicator (100 dots).
+Qalle's BPS Patch Creator. Creates a BPS patch from the differences of two
+files. Inefficient and slow. Prints a progress indicator (100 dots).
 
 positional arguments:
   orig_file            Original file to read.

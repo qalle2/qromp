@@ -16,8 +16,8 @@ def parse_args():
 
     parser = argparse.ArgumentParser(
         description="Qalle's BPS Patch Creator. Creates a BPS patch from "
-        "differences of two files. Inefficient and slow. Prints a progress "
-        f"indicator ({PROGRESS_DOT_COUNT} dots)."
+        "the differences of two files. Inefficient and slow. Prints a "
+        f"progress indicator ({PROGRESS_DOT_COUNT} dots)."
     )
 
     parser.add_argument(
