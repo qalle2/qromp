@@ -6,7 +6,7 @@
 # Note: Mega Man 3 Finnish patch doesn't work with any ROM I have.
 
 clear
-rm -f test-out/*
+rm -f test-out/*.nes
 
 echo "=== Apply BPS patches (1 verbosely) ==="
 python3 qromp.py test-in-orig/megaman1u.nes \
