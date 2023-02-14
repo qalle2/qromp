@@ -37,7 +37,7 @@ python3 qromp.py test-in-orig/smb1e.nes \
 echo
 
 echo "=== Verify patched files ==="
-md5sum -c --quiet test_dec.md5
+md5sum -c --quiet test-dec.md5
 echo
 
 echo "=== Five distinct errors ==="

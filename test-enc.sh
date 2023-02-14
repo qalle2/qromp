@@ -47,7 +47,7 @@ python3 qromp.py test-in-orig/smb3e.nes \
     test-out/smb3e-fin.bps test-out/smb3e-fin-bps.nes
 python3 qromp.py test-in-orig/smb3u.nes \
     test-out/smb3u-marioadv.bps test-out/smb3u-marioadv-bps.nes
-md5sum -c --quiet test_enc_bps.md5
+md5sum -c --quiet test-enc-bps.md5
 echo
 
 echo "=== Create IPS patches ==="
@@ -91,7 +91,7 @@ python3 qromp.py test-in-orig/smb3u.nes \
     test-out/smb3u-marioadv.ips test-out/smb3u-marioadv-ips.nes
 python3 qromp.py test-in-orig/smb3u.nes \
     test-out/smb3u-mix.ips test-out/smb3u-mix-ips.nes
-md5sum -c --quiet test_enc_ips.md5
+md5sum -c --quiet test-enc-ips.md5
 echo
 
 echo "=== Five distinct errors ==="
