@@ -11,12 +11,12 @@ Table of contents:
 ```
 usage: qromp.py [-h] [-v] orig_file patch_file output_file
 
-Qalle's ROM Patcher. Applies a BPS/IPS patch to a file. Note: the IPS decoder
-has the 'EOF' address (0x454f46) bug.
+Qalle's ROM Patcher. Applies BPS/IPS patch to file. IPS decoder has 'EOF'
+address (0x454f46) bug.
 
 positional arguments:
-  orig_file      The original, unpatched file to read.
-  patch_file     The patch file (.bps/.ips) to read.
+  orig_file      Original (unpatched) file to read.
+  patch_file     Patch file (.bps/.ips) to read.
   output_file    Patched copy of orig_file to write.
 
 options:
@@ -27,28 +27,30 @@ options:
 
 ## qromp_enc.py
 ```
-usage: qromp_enc.py [-h] [--ips-max-unchg IPS_MAX_UNCHG]
+usage: qromp_enc.py [-h] [--bps-min-copy BPS_MIN_COPY]
+                    [--ips-max-unchg IPS_MAX_UNCHG]
                     orig_file modified_file patch_file
 
-Qalle's ROM Patch Creator. Creates a BPS/IPS patch from the differences of two
-files. Notes: does not support creating a BPS patch from input files of
-different size; both encoders are somewhat inefficient; the BPS encoder is
-also slow.
+Qalle's ROM Patch Creator. Creates BPS/IPS patch from differences of two
+files. Both encoders are somewhat inefficient; BPS encoder is also slow. BPS
+encoder prints progress indicator (100 dots) and time taken.
 
 positional arguments:
-  orig_file             The original file to read.
-  modified_file         The file to read and compare against orig_file. If
-                        creating an IPS, must be at least as large as
-                        orig_file. If creating a BPS, must be same size as
-                        orig_file.
-  patch_file            The patch file to write (.bps/.ips).
+  orig_file             Original file to read.
+  modified_file         File to read and compare against orig_file. If
+                        creating IPS patch, modified_file must be at least as
+                        large as orig_file.
+  patch_file            Patch file to write (.bps/.ips).
 
 options:
   -h, --help            show this help message and exit
+  --bps-min-copy BPS_MIN_COPY
+                        (BPS only.) Minimum length of substring to copy from
+                        original file. 1-20, default=4. Affects efficiency.
+                        Larger=faster.
   --ips-max-unchg IPS_MAX_UNCHG
                         (IPS only.) Maximum length of unchanged substring to
-                        store. 0-10, default=1. Larger values may be more
-                        efficient.
+                        store. 0-10, default=1. Affects efficiency.
 ```
 
 ## Other files

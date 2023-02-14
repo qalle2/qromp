@@ -39,8 +39,8 @@ def parse_args():
     # parse command line arguments
 
     parser = argparse.ArgumentParser(
-        description="Qalle's ROM Patcher. Applies a BPS/IPS patch to a file. "
-        "Note: the IPS decoder has the 'EOF' address (0x454f46) bug."
+        description="Qalle's ROM Patcher. Applies BPS/IPS patch to file. IPS "
+        "decoder has 'EOF' address (0x454f46) bug."
     )
 
     parser.add_argument(
@@ -50,10 +50,10 @@ def parse_args():
     )
 
     parser.add_argument(
-        "orig_file", help="The original, unpatched file to read."
+        "orig_file", help="Original (unpatched) file to read."
     )
     parser.add_argument(
-        "patch_file", help="The patch file (.bps/.ips) to read."
+        "patch_file", help="Patch file (.bps/.ips) to read."
     )
     parser.add_argument(
         "output_file", help="Patched copy of orig_file to write."

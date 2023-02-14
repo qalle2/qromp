@@ -1,4 +1,4 @@
-import argparse, os, struct, sys
+import argparse, os, struct, sys, time
 from zlib import crc32
 
 # actions (types of BPS blocks); note that "source" and "target" here refer to
@@ -7,6 +7,9 @@ BPS_SOURCE_READ = 0
 BPS_TARGET_READ = 1
 BPS_SOURCE_COPY = 2
 BPS_TARGET_COPY = 3  # unused atm
+
+# number of dots in BPS progress indicator
+BPS_PROGRESS_DOT_COUNT = 100
 
 # minimum length of IPS RLE blocks (this is a good value when --ips-max-unchg
 # is 1 or 2)
@@ -21,33 +24,39 @@ def parse_args():
     # parse command line arguments
 
     parser = argparse.ArgumentParser(
-        description="Qalle's ROM Patch Creator. Creates a BPS/IPS patch from "
-        "the differences of two files. Notes: does not support creating a BPS "
-        "patch from input files of different size; both encoders are somewhat "
-        "inefficient; the BPS encoder is also slow."
+        description="Qalle's ROM Patch Creator. Creates BPS/IPS patch from "
+        "differences of two files. Both encoders are somewhat inefficient; "
+        "BPS encoder is also slow. BPS encoder prints progress indicator "
+        f"({BPS_PROGRESS_DOT_COUNT} dots) and time taken."
     )
 
+    parser.add_argument(
+        "--bps-min-copy", type=int, default=4,
+        help="(BPS only.) Minimum length of substring to copy from original "
+        "file. 1-20, default=4. Affects efficiency. Larger=faster."
+    )
     parser.add_argument(
         "--ips-max-unchg", type=int, default=1,
         help="(IPS only.) Maximum length of unchanged substring to store. "
-        "0-10, default=1. Larger values may be more efficient."
+        "0-10, default=1. Affects efficiency."
     )
 
     parser.add_argument(
-        "orig_file", help="The original file to read."
+        "orig_file", help="Original file to read."
     )
     parser.add_argument(
         "modified_file",
-        help="The file to read and compare against orig_file. If creating an "
-        "IPS, must be at least as large as orig_file. If creating a BPS, must "
-        "be same size as orig_file."
+        help="File to read and compare against orig_file. If creating IPS "
+        "patch, modified_file must be at least as large as orig_file."
     )
     parser.add_argument(
-        "patch_file", help="The patch file to write (.bps/.ips)."
+        "patch_file", help="Patch file to write (.bps/.ips)."
     )
 
     args = parser.parse_args()
 
+    if not 1 <= args.bps_min_copy <= 20:
+        sys.exit("Invalid '--bps-min-copy' value.")
     if not 0 <= args.ips_max_unchg <= 10:
         sys.exit("Invalid '--ips-max-unchg' value.")
     if get_file_ext(args.patch_file) not in (".bps", ".ips"):
@@ -103,22 +112,33 @@ def find_longest_prefix(str1, str2):
         else:
             maxLen = avgLen - 1
 
-def bps_find_substrings(str1, str2):
+def bps_find_substrings(str1, str2, minCopyLen):
     # find substrings in str1 that occur anywhere in str2;
     # generate (start_in_str1, length);
     # e.g. "abcd", "cxab" -> (0, 2), (2, 1)
-    # this can take ~5 seconds on my machine
+    # almost all the time is spent here (almost 4 min for largest test file)
 
     pos1 = 0  # position in str1
+    dotsPrinted = 0
+
     while pos1 < len(str1):
-        prefixLen = find_longest_prefix(str1[pos1:], str2)
-        if prefixLen:
+        # print progress indicator
+        dotsSoFar = pos1 * BPS_PROGRESS_DOT_COUNT // len(str1)
+        if dotsSoFar > dotsPrinted:
+            print((dotsSoFar - dotsPrinted) * ".", end="", flush=True)
+            dotsPrinted = dotsSoFar
+        # speed up by checking for minimum length first
+        if len(str1) - pos1 >= minCopyLen \
+        and str1[pos1:pos1+minCopyLen] in str2:
+            prefixLen = find_longest_prefix(str1[pos1:], str2)
             yield (pos1, prefixLen)
             pos1 += prefixLen
         else:
             pos1 += 1
 
-def bps_create(handle1, handle2):
+    print((BPS_PROGRESS_DOT_COUNT - dotsPrinted) * ".")
+
+def bps_create(handle1, handle2, minCopyLen):
     # create a BPS patch from the difference of two files;
     # generate patch data except for patch CRC at the end;
     # note: doesn't use the BPS_TARGET_COPY action at all
@@ -134,9 +154,8 @@ def bps_create(handle1, handle2):
     )
 
     # find identical substrings: [(start_in_data2, length), ...]
-    # minimum length 3-5 is best for my test files
     data2Substrs = list(
-        s for s in bps_find_substrings(data2, data1) if s[1] >= 4
+        s for s in bps_find_substrings(data2, data1, minCopyLen)
     )
 
     # create patch data
@@ -214,12 +233,12 @@ def ips_get_optimized_blocks(data1, data2, maxGap):
         # output remaining blocks
         yield (blockBuf[0][0], sum(blockBuf[-1]) - blockBuf[0][0])
 
-def ips_get_subblocks(data1, data2, args):
+def ips_get_subblocks(data1, data2, maxUnchanged):
     # split blocks that differ into RLE and non-RLE subblocks;
     # generate (start, length, is_RLE)
 
     for (blkStart, blkLen) in ips_get_optimized_blocks(
-        data1, data2, args.ips_max_unchg
+        data1, data2, maxUnchanged
     ):
         block = data2[blkStart:blkStart+blkLen]
 
@@ -302,20 +321,17 @@ def main():
         with open(args.orig_file, "rb") as handle1, \
         open(args.modified_file, "rb") as handle2:
             if get_file_ext(args.patch_file) == ".bps":
-                if handle1.seek(0, 2) != handle2.seek(0, 2):
-                    sys.exit(
-                        "This BPS encoder doesn't support input files of "
-                        "different size."
-                    )
-                for bytes_ in bps_create(handle1, handle2):
+                startTime = time.time()
+                for bytes_ in bps_create(handle1, handle2, args.bps_min_copy):
                     patch.extend(bytes_)
                 patch.extend(struct.pack("<L", crc32(patch)))
+                print("Time:", format(time.time() - startTime, ".1f"), "s")
             else:
                 if handle1.seek(0, 2) > handle2.seek(0, 2):
                     sys.exit(
                         "Second input file must be at least as large as first."
                     )
-                for bytes_ in ips_create(handle1, handle2, args):
+                for bytes_ in ips_create(handle1, handle2, args.ips_max_unchg):
                     patch.extend(bytes_)
     except OSError:
         sys.exit("Error reading input files.")
