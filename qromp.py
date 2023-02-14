@@ -186,16 +186,16 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             blkByteCnts[action] += length
 
     if verbose:
-        print("Number of blocks and bytes by type:")
+        print("Blocks by type:")
         for action in range(4):
             print(
-                f"{blkByteCnts[action]} bytes in {blkCnts[action]} blocks of "
-                f"type {BPS_DESCRIPTIONS[action][0]}."
+                f"- {blkByteCnts[action]} bytes in {blkCnts[action]} "
+                f"{BPS_DESCRIPTIONS[action][0]} blocks"
             )
 
     return dstData
 
-def bps_apply(origHnd, patchHnd, args):
+def bps_apply(origHnd, patchHnd, verbose):
     # apply BPS patch from patchHnd to origHnd, return patched data
     # see https://gist.github.com/khadiwala/32550f44efcc36a5b6a470ff2d4c9c22
 
@@ -221,7 +221,7 @@ def bps_apply(origHnd, patchHnd, args):
     # header - file sizes
     hdrSrcSize = bps_read_int(patchHnd)
     hdrDstSize = bps_read_int(patchHnd)
-    if args.verbose:
+    if verbose:
         print(
             f"Expected file sizes: original={hdrSrcSize}, "
             f"patched={hdrDstSize}."
@@ -236,13 +236,13 @@ def bps_apply(origHnd, patchHnd, args):
     metadataSize = bps_read_int(patchHnd)
     if metadataSize:
         metadata = read_bytes(metadataSize, patchHnd)
-        if args.verbose:
+        if verbose:
             print("Metadata:", metadata.decode("ascii", errors="replace"))
-    elif args.verbose:
+    elif verbose:
         print("No metadata.")
 
     # create output data by repeatedly appending data
-    dstData = bps_decode_blocks(srcData, patchHnd, args.verbose)
+    dstData = bps_decode_blocks(srcData, patchHnd, verbose)
 
     # validate output size
     if hdrDstSize != len(dstData):
@@ -256,7 +256,7 @@ def bps_apply(origHnd, patchHnd, args):
     expectedCrcs = tuple(
         struct.unpack("<L", footer[i:i+4])[0] for i in (0, 4, 8)
     )
-    if args.verbose:
+    if verbose:
         print(
             "Expected CRC32s: input={:08x}, output={:08x}, patch={:08x}."
             .format(*expectedCrcs)
@@ -299,7 +299,7 @@ def ips_generate_blocks(handle):
             # non-RLE
             yield (offset, length, False, read_bytes(length, handle))
 
-def ips_apply(origHnd, patchHnd, args):
+def ips_apply(origHnd, patchHnd, verbose):
     # apply IPS patch from patchHnd to origHnd, return patched data
     # see https://zerosoft.zophar.net/ips.php
     # note: the patch is allowed to append data to the end of the file
@@ -307,7 +307,7 @@ def ips_apply(origHnd, patchHnd, args):
     origHnd.seek(0)
     data = bytearray(origHnd.read())
 
-    if args.verbose:
+    if verbose:
         print(f"CRC32 of input file: {crc32(data):08x}.")
 
     patchHnd.seek(0)
@@ -328,7 +328,7 @@ def ips_apply(origHnd, patchHnd, args):
             nonRleBlockCnt += 1
             nonRleByteCnt += length
 
-    if args.verbose:
+    if verbose:
         print("Number of blocks and bytes by type:")
         print(f"{rleByteCnt} bytes in {rleBlockCnt} RLE blocks.")
         print(f"{nonRleByteCnt} bytes in {nonRleBlockCnt} non-RLE blocks.")
@@ -346,9 +346,9 @@ def main():
         with open(args.orig_file, "rb") as origHnd, \
         open(args.patch_file, "rb") as patchHnd:
             if get_file_ext(args.patch_file) == ".bps":
-                patchedData = bps_apply(origHnd, patchHnd, args)
+                patchedData = bps_apply(origHnd, patchHnd, args.verbose)
             else:
-                patchedData = ips_apply(origHnd, patchHnd, args)
+                patchedData = ips_apply(origHnd, patchHnd, args.verbose)
     except OSError:
         sys.exit("Error reading input files.")
 
