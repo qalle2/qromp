@@ -1,12 +1,22 @@
 import argparse, os, struct, sys
 from zlib import crc32
 
-# actions (types of BPS blocks); note that "source" and "target" here refer to
-# *encoder*'s input files
-BPS_SOURCE_READ = 0
-BPS_TARGET_READ = 1
-BPS_SOURCE_COPY = 2
-BPS_TARGET_COPY = 3
+# enumerate BPS actions (types of blocks);
+# note that "source" and "target" here refer to *encoder*'s input files
+(
+    BPS_SOURCE_READ,
+    BPS_TARGET_READ,
+    BPS_SOURCE_COPY,
+    BPS_TARGET_COPY,
+) = range(4)
+
+# descriptions of BPS actions; value: (name, source_file)
+BPS_DESCRIPTIONS = {
+    BPS_SOURCE_READ: ("SourceRead", "original"),
+    BPS_TARGET_READ: ("TargetRead", "patch"),
+    BPS_SOURCE_COPY: ("SourceCopy", "original"),
+    BPS_TARGET_COPY: ("TargetCopy", "patched"),
+}
 
 # maximum unsigned integer to read from BPS file
 # (you may want to increase this in the future)
@@ -99,10 +109,21 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
     dstOffset = 0  # read offset in dstData (used by BPS_TARGET_COPY)
 
     # statistics (source/target read/copy block/byte count)
-    srcRdBlks = trgRdBlks = srcCpBlks = trgCpBlks = 0
-    srcRdBytes = trgRdBytes = srcCpBytes = trgCpBytes = 0
+    blkCnts = 4 * [0]
+    blkByteCnts = 4 * [0]
+
+    if verbose:
+        print(
+            "Address in patch file / patched file size before action / "
+            "action / file to copy from / address to copy from / "
+            "bytes to copy to patched file:"
+        )
 
     while patchHnd.tell() < patchSize - 3 * 4:
+        # for statistics
+        origPatchPos = patchHnd.tell()
+        origDstSize = len(dstData)
+
         # get length and type of block
         lengthAndAction = bps_read_int(patchHnd)
         length = (lengthAndAction >> 2) + 1
@@ -112,36 +133,30 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
             # copy from same address in original file
             if len(dstData) + length > len(srcData):
                 sys.exit(
-                    "SourceRead: tried to read from invalid position in input "
-                    "data."
+                    "SourceRead: tried to read from invalid position in "
+                    "original file."
                 )
             dstData.extend(srcData[len(dstData):len(dstData)+length])
-            srcRdBlks += 1
-            srcRdBytes += length
         elif action == BPS_TARGET_READ:
             # copy from current address in patch
             dstData.extend(read_bytes(length, patchHnd))
-            trgRdBlks += 1
-            trgRdBytes += length
         elif action == BPS_SOURCE_COPY:
             # copy from any address in original file
             srcOffset += bps_read_signed_int(patchHnd)
             if srcOffset < 0 or srcOffset + length > len(srcData):
                 sys.exit(
-                    "SourceCopy: tried to read from invalid position in input "
-                    "data."
+                    "SourceCopy: tried to read from invalid position in "
+                    "original file."
                 )
             dstData.extend(srcData[srcOffset:srcOffset+length])
             srcOffset += length
-            srcCpBlks += 1
-            srcCpBytes += length
         else:
             # BPS_TARGET_COPY - copy from any address in patched file
             dstOffset += bps_read_signed_int(patchHnd)
             if not 0 <= dstOffset < len(dstData):
                 sys.exit(
                     "TargetCopy: tried to read from invalid position in "
-                    "output data."
+                    "patched file."
                 )
             # can't copy all in one go because newly-added bytes may also be
             # read; this algorithm keeps doubling the chunk size as long as
@@ -154,15 +169,29 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
                 )
                 dstData.extend(dstData[origDstOffset:origDstOffset+chunkSize])
                 dstOffset += chunkSize
-            trgCpBlks += 1
-            trgCpBytes += length
+
+        if verbose:
+            (actName, srcFile) = BPS_DESCRIPTIONS[action]
+            srcAddr = (
+                origDstSize,               # BPS_SOURCE_READ
+                patchHnd.tell() - length,  # BPS_TARGET_READ
+                srcOffset - length,        # BPS_SOURCE_COPY
+                dstOffset - length,        # BPS_TARGET_COPY
+            )[action]
+            print(
+                f"{origPatchPos:10} {origDstSize:10} {actName} {srcFile:10} "
+                f"{srcAddr:10} {length:10}"
+            )
+            blkCnts[action] += 1
+            blkByteCnts[action] += length
 
     if verbose:
-        print(
-            f"{srcRdBytes}/{trgRdBytes}/{srcCpBytes}/{trgCpBytes} bytes in "
-            f"{srcRdBlks}/{trgRdBlks}/{srcCpBlks}/{trgCpBlks} blocks of type "
-            "SourceRead/TargetRead/SourceCopy/TargetCopy."
-        )
+        print("Number of blocks and bytes by type:")
+        for action in range(4):
+            print(
+                f"{blkByteCnts[action]} bytes in {blkCnts[action]} blocks of "
+                f"type {BPS_DESCRIPTIONS[action][0]}."
+            )
 
     return dstData
 
@@ -193,10 +222,13 @@ def bps_apply(origHnd, patchHnd, args):
     hdrSrcSize = bps_read_int(patchHnd)
     hdrDstSize = bps_read_int(patchHnd)
     if args.verbose:
-        print(f"Expected file sizes: input={hdrSrcSize}, output={hdrDstSize}.")
+        print(
+            f"Expected file sizes: original={hdrSrcSize}, "
+            f"patched={hdrDstSize}."
+        )
     if hdrSrcSize != len(srcData):
         print(
-            f"Warning: input file size should be {hdrSrcSize}.",
+            f"Warning: original file size should be {hdrSrcSize}.",
             file=sys.stderr
         )
 
@@ -215,7 +247,7 @@ def bps_apply(origHnd, patchHnd, args):
     # validate output size
     if hdrDstSize != len(dstData):
         print(
-            f"Warning: output file size should be {hdrDstSize}.",
+            f"Warning: patched file size should be {hdrDstSize}.",
             file=sys.stderr
         )
 
@@ -230,9 +262,9 @@ def bps_apply(origHnd, patchHnd, args):
             .format(*expectedCrcs)
         )
     if expectedCrcs[0] != crc32(srcData):
-        print("Warning: input file CRC mismatch.", file=sys.stderr)
+        print("Warning: original file CRC mismatch.", file=sys.stderr)
     if expectedCrcs[1] != crc32(dstData):
-        print("Warning: output file CRC mismatch.", file=sys.stderr)
+        print("Warning: patched file CRC mismatch.", file=sys.stderr)
     if expectedCrcs[2] != patchCrc:
         print("Warning: patch file CRC mismatch.", file=sys.stderr)
 
@@ -297,11 +329,9 @@ def ips_apply(origHnd, patchHnd, args):
             nonRleByteCnt += length
 
     if args.verbose:
-        print(
-            f"{rleByteCnt}/{nonRleByteCnt} bytes "
-            f"in {rleBlockCnt}/{nonRleBlockCnt} "
-            "blocks of type RLE/non-RLE."
-        )
+        print("Number of blocks and bytes by type:")
+        print(f"{rleByteCnt} bytes in {rleBlockCnt} RLE blocks.")
+        print(f"{nonRleByteCnt} bytes in {nonRleBlockCnt} non-RLE blocks.")
         print(f"CRC32 of output file: {crc32(data):08x}.")
 
     return data
