@@ -108,16 +108,15 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
     srcOffset = 0  # read offset in srcData (used by BPS_SOURCE_COPY)
     dstOffset = 0  # read offset in dstData (used by BPS_TARGET_COPY)
 
-    # statistics (source/target read/copy block/byte count)
-    blkCnts = 4 * [0]
-    blkByteCnts = 4 * [0]
-
     if verbose:
         print(
             "Address in patch file / patched file size before action / "
             "action / file to copy from / address to copy from / "
-            "bytes to copy to patched file:"
+            "bytes to output:"
         )
+        # statistics by action
+        blkCnts = 4 * [0]
+        blkByteCnts = 4 * [0]
 
     while patchHnd.tell() < patchSize - 3 * 4:
         # for statistics
@@ -189,7 +188,7 @@ def bps_decode_blocks(srcData, patchHnd, verbose):
         print("Blocks by type:")
         for action in range(4):
             print(
-                f"- {blkByteCnts[action]} bytes in {blkCnts[action]} "
+                f"- {blkByteCnts[action]} bytes output by {blkCnts[action]} "
                 f"{BPS_DESCRIPTIONS[action][0]} blocks"
             )
 
@@ -278,26 +277,24 @@ def ips_decode_int(bytes_):
 
 def ips_generate_blocks(handle):
     # read IPS file starting from after header
-    # generate each block as (offset, length, is_RLE, data); for RLE blocks,
-    # data is one byte
+    # generate each block as (patch_pos, offset, length, is_RLE, data);
+    # for RLE blocks, data is one byte
 
     while True:
+        patchPos = handle.tell()
         offset = ips_decode_int(read_bytes(3, handle))
+
         if offset == 0x454f46:  # "EOF"
             break
+
         length = ips_decode_int(read_bytes(2, handle))
         if length == 0:
             # RLE
             length = ips_decode_int(read_bytes(2, handle))
-            if length < 3:
-                print(
-                    "Warning: RLE block has less than 3 bytes; patch may be "
-                    "corrupt.", file=sys.stderr
-                )
-            yield (offset, length, True, read_bytes(1, handle))
+            yield (patchPos, offset, length, True, read_bytes(1, handle))
         else:
             # non-RLE
-            yield (offset, length, False, read_bytes(length, handle))
+            yield (patchPos, offset, length, False, read_bytes(length, handle))
 
 def ips_apply(origHnd, patchHnd, verbose):
     # apply IPS patch from patchHnd to origHnd, return patched data
@@ -315,23 +312,33 @@ def ips_apply(origHnd, patchHnd, verbose):
     if read_bytes(5, patchHnd) != b"PATCH":
         sys.exit("Not an IPS file.")
 
-    rleBlockCnt = nonRleBlockCnt = rleByteCnt = nonRleByteCnt = 0  # statistics
+    if verbose:
+        print("Address in patch file / block type / bytes to output:")
+        # statistics by block type
+        blkCnts = 2 * [0]
+        blkByteCnts = 2 * [0]
 
-    for (offset, length, isRle, blockData) in ips_generate_blocks(patchHnd):
+    for (patchPos, offset, length, isRle, blockData) \
+    in ips_generate_blocks(patchHnd):
         if offset > len(data):
             sys.exit("Tried to write past end of data.")
-        data[offset:offset+length] = length * blockData if isRle else blockData
-        if isRle:
-            rleBlockCnt += 1
-            rleByteCnt += length
-        else:
-            nonRleBlockCnt += 1
-            nonRleByteCnt += length
+        data[offset:offset+length] = (length if isRle else 1) * blockData
+        if verbose:
+            blkCnts[isRle] += 1
+            blkByteCnts[isRle] += length
+            descr = "RLE" if isRle else "non-RLE"
+            print(f"{patchPos:10} {descr:7} {length:10}")
 
     if verbose:
-        print("Number of blocks and bytes by type:")
-        print(f"{rleByteCnt} bytes in {rleBlockCnt} RLE blocks.")
-        print(f"{nonRleByteCnt} bytes in {nonRleBlockCnt} non-RLE blocks.")
+        eofPos = patchHnd.seek(0, 2) - 3
+        print(f"{eofPos:10} {'EOF':7} {'-':>10}")
+        print("Blocks by type:")
+        for bt in range(2):
+            descr = ("non-RLE", "RLE")[bt]
+            print(
+                f"- {blkByteCnts[bt]} bytes output by {blkCnts[bt]} {descr} "
+                "blocks"
+            )
         print(f"CRC32 of output file: {crc32(data):08x}.")
 
     return data
