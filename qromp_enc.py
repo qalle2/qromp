@@ -40,7 +40,7 @@ def parse_args():
         "modified_file",
         help="The file to read and compare against orig_file. If creating an "
         "IPS, must be at least as large as orig_file. If creating a BPS, must "
-        "be the size as orig_file."
+        "be same size as orig_file."
     )
     parser.add_argument(
         "patch_file", help="The patch file to write (.bps/.ips)."

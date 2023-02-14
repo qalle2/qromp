@@ -39,7 +39,7 @@ positional arguments:
   orig_file             The original file to read.
   modified_file         The file to read and compare against orig_file. If
                         creating an IPS, must be at least as large as
-                        orig_file. If creating a BPS, must be the size as
+                        orig_file. If creating a BPS, must be same size as
                         orig_file.
   patch_file            The patch file to write (.bps/.ips).
 
