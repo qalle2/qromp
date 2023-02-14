@@ -27,7 +27,7 @@ def parse_args():
         description="Qalle's ROM Patch Creator. Creates BPS/IPS patch from "
         "differences of two files. Both encoders are somewhat inefficient; "
         "BPS encoder is also slow. BPS encoder prints progress indicator "
-        f"({BPS_PROGRESS_DOT_COUNT} dots) and time taken."
+        f"({BPS_PROGRESS_DOT_COUNT} dots)."
     )
 
     parser.add_argument(
@@ -313,6 +313,7 @@ def ips_create(handle1, handle2, args):
 # -----------------------------------------------------------------------------
 
 def main():
+    startTime = time.time()
     args = parse_args()
 
     # create patch data
@@ -321,11 +322,9 @@ def main():
         with open(args.orig_file, "rb") as handle1, \
         open(args.modified_file, "rb") as handle2:
             if get_file_ext(args.patch_file) == ".bps":
-                startTime = time.time()
                 for bytes_ in bps_create(handle1, handle2, args.bps_min_copy):
                     patch.extend(bytes_)
                 patch.extend(struct.pack("<L", crc32(patch)))
-                print("Time:", format(time.time() - startTime, ".1f"), "s")
             else:
                 if handle1.seek(0, 2) > handle2.seek(0, 2):
                     sys.exit(
@@ -343,5 +342,7 @@ def main():
             handle.write(patch)
     except OSError:
         sys.exit("Error writing output file.")
+
+    print("Time:", format(time.time() - startTime, ".1f"), "s")
 
 main()
