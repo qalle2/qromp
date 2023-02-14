@@ -205,10 +205,6 @@ def ips_get_optimized_blocks(data1, data2, maxGap):
         # output remaining blocks
         yield (blockBuf[0][0], sum(blockBuf[-1]) - blockBuf[0][0])
 
-def ips_encode_int(n, byteCnt):
-    # encode an IPS integer (unsigned, most significant byte first)
-    return bytes((n >> s) & 0xff for s in range((byteCnt - 1) * 8, -8, -8))
-
 def ips_get_subblocks(data1, data2, args):
     # split blocks that differ into RLE and non-RLE subblocks;
     # generate (start, length, is_RLE)
@@ -252,6 +248,10 @@ def ips_get_subblocks(data1, data2, args):
             yield (blkStart + subStart, nonRleLen, False)
         if rleLen:
             yield (blkStart + subStart + nonRleLen, rleLen, True)
+
+def ips_encode_int(n, byteCnt):
+    # encode an IPS integer (unsigned, most significant byte first)
+    return bytes((n >> s) & 0xff for s in range((byteCnt - 1) * 8, -8, -8))
 
 def ips_create(handle1, handle2, args):
     # create an IPS patch from the differences of handle1 and handle2;
