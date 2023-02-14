@@ -313,7 +313,10 @@ def ips_apply(origHnd, patchHnd, verbose):
         sys.exit("Not an IPS file.")
 
     if verbose:
-        print("Address in patch file / block type / bytes to output:")
+        print(
+            "Address in patch file / address in original file / block type / "
+            "bytes to output:"
+        )
         # statistics by block type
         blkCnts = 2 * [0]
         blkByteCnts = 2 * [0]
@@ -327,11 +330,11 @@ def ips_apply(origHnd, patchHnd, verbose):
             blkCnts[isRle] += 1
             blkByteCnts[isRle] += length
             descr = "RLE" if isRle else "non-RLE"
-            print(f"{patchPos:10} {descr:7} {length:10}")
+            print(f"{patchPos:10} {offset:10} {descr:7} {length:10}")
 
     if verbose:
         eofPos = patchHnd.seek(0, 2) - 3
-        print(f"{eofPos:10} {'EOF':7} {'-':>10}")
+        print(f"{eofPos:10} {'-':>10} {'EOF':7} {'-':>10}")
         print("Blocks by type:")
         for bt in range(2):
             descr = ("non-RLE", "RLE")[bt]

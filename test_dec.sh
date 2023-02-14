@@ -1,3 +1,4 @@
+# Tests qromp.py.
 # Warning: this script deletes files. Run at your own risk.
 # .nes files: "e" = European, "u" = USA.
 # Most patches are from Romhacking.net ("fin" = Finnish translation).

@@ -12,6 +12,8 @@ BPS_TARGET_COPY = 3  # unused atm
 # is 1 or 2)
 IPS_MIN_RLE_LEN = 9
 
+IPS_MAX_BLK_LEN = 0xffff
+
 def get_file_ext(path):
     return os.path.splitext(path)[1].lower()  # e.g. "/FILE.EXT" -> ".ext"
 
@@ -20,9 +22,9 @@ def parse_args():
 
     parser = argparse.ArgumentParser(
         description="Qalle's ROM Patch Creator. Creates a BPS/IPS patch from "
-        "the differences of two files. Notes: does not support input files of "
-        "different size; both encoders are somewhat inefficient; the BPS "
-        "encoder is also slow."
+        "the differences of two files. Notes: does not support creating a BPS "
+        "patch from input files of different size; both encoders are somewhat "
+        "inefficient; the BPS encoder is also slow."
     )
 
     parser.add_argument(
@@ -35,7 +37,10 @@ def parse_args():
         "orig_file", help="The original file to read."
     )
     parser.add_argument(
-        "modified_file", help="The file to read and compare against orig_file."
+        "modified_file",
+        help="The file to read and compare against orig_file. If creating an "
+        "IPS, must be at least as large as orig_file. If creating a BPS, must "
+        "be the size as orig_file."
     )
     parser.add_argument(
         "patch_file", help="The patch file to write (.bps/.ips)."
@@ -175,14 +180,18 @@ def ips_get_blocks(data1, data2):
             # end a block
             yield (start, pos - start)
             start = -1
-        elif start != -1 and pos - start == 0xffff:
+        elif start != -1 and pos - start == IPS_MAX_BLK_LEN:
             # end a block and start a new one
             yield (start, pos - start)
             start = pos
 
     if start != -1:
-        # end the last block
+        # end the last block shared by both files
         yield (start, len(data1) - start)
+
+    # data after end of first file, if any
+    for start in range(len(data1), len(data2), IPS_MAX_BLK_LEN):
+        yield (start, min(len(data2) - start, IPS_MAX_BLK_LEN))
 
 def ips_get_optimized_blocks(data1, data2, maxGap):
     # generate (start, length) of blocks that differ, with some blocks merged;
@@ -195,7 +204,7 @@ def ips_get_optimized_blocks(data1, data2, maxGap):
         # or the whole buffer is too large...
         if len(blockBuf) >= 2 and (
             blockBuf[-1][0] - sum(blockBuf[-2]) > maxGap
-            or sum(blockBuf[-1]) - blockBuf[0][0] > 0xffff
+            or sum(blockBuf[-1]) - blockBuf[0][0] > IPS_MAX_BLK_LEN
         ):
             # ...output all but the last block as one and delete from buffer
             yield (blockBuf[0][0], sum(blockBuf[-2]) - blockBuf[0][0])
@@ -288,17 +297,24 @@ def main():
     args = parse_args()
 
     # create patch data
+    patch = bytearray()
     try:
         with open(args.orig_file, "rb") as handle1, \
         open(args.modified_file, "rb") as handle2:
-            if handle1.seek(0, 2) != handle2.seek(0, 2):
-                sys.exit("Input files of different size are not supported.")
-            patch = bytearray()
             if get_file_ext(args.patch_file) == ".bps":
+                if handle1.seek(0, 2) != handle2.seek(0, 2):
+                    sys.exit(
+                        "This BPS encoder doesn't support input files of "
+                        "different size."
+                    )
                 for bytes_ in bps_create(handle1, handle2):
                     patch.extend(bytes_)
                 patch.extend(struct.pack("<L", crc32(patch)))
             else:
+                if handle1.seek(0, 2) > handle2.seek(0, 2):
+                    sys.exit(
+                        "Second input file must be at least as large as first."
+                    )
                 for bytes_ in ips_create(handle1, handle2, args):
                     patch.extend(bytes_)
     except OSError:

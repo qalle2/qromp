@@ -31,12 +31,16 @@ usage: qromp_enc.py [-h] [--ips-max-unchg IPS_MAX_UNCHG]
                     orig_file modified_file patch_file
 
 Qalle's ROM Patch Creator. Creates a BPS/IPS patch from the differences of two
-files. Notes: does not support input files of different size; both encoders
-are somewhat inefficient; the BPS encoder is also slow.
+files. Notes: does not support creating a BPS patch from input files of
+different size; both encoders are somewhat inefficient; the BPS encoder is
+also slow.
 
 positional arguments:
   orig_file             The original file to read.
-  modified_file         The file to read and compare against orig_file.
+  modified_file         The file to read and compare against orig_file. If
+                        creating an IPS, must be at least as large as
+                        orig_file. If creating a BPS, must be the size as
+                        orig_file.
   patch_file            The patch file to write (.bps/.ips).
 
 options:
