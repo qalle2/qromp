@@ -3,21 +3,39 @@ Apply a BPS/IPS patch to a binary file or create a BPS/IPS patch file from the
 differences of two binary files.
 
 Table of contents:
-* [qromp.py](#qromppy)
+* [qromp_bps.py](#qromp_bpspy)
+* [qromp_ips.py](#qromp_ipspy)
 * [qromp_enc_bps.py](#qromp_enc_bpspy)
 * [qromp_enc_ips.py](#qromp_enc_ipspy)
 * [Other files](#other-files)
 
-## qromp.py
+## qromp_bps.py
 ```
-usage: qromp.py [-h] [-v] orig_file patch_file output_file
+usage: qromp_bps.py [-h] [-v] orig_file patch_file output_file
 
-Qalle's ROM Patcher. Applies BPS/IPS patch to file. IPS decoder has 'EOF'
-address (0x454f46) bug.
+Qalle's BPS Patcher. Applies a BPS patch to a file.
 
 positional arguments:
   orig_file      Original (unpatched) file to read.
-  patch_file     Patch file (.bps/.ips) to read.
+  patch_file     Patch file (.bps) to read.
+  output_file    Patched copy of orig_file to write.
+
+options:
+  -h, --help     show this help message and exit
+  -v, --verbose  Print more info. (CRC32 checksums are of zlib variety and
+                 hexadecimal.)
+```
+
+## qromp_ips.py
+```
+usage: qromp_ips.py [-h] [-v] orig_file patch_file output_file
+
+Qalle's IPS Patcher. Applies an IPS patch to a file. Has the 'EOF' address
+(0x454f46) bug.
+
+positional arguments:
+  orig_file      Original (unpatched) file to read.
+  patch_file     Patch file (.ips) to read.
   output_file    Patched copy of orig_file to write.
 
 options:
