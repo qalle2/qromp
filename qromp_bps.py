@@ -5,7 +5,7 @@ from zlib import crc32
 # note that "source" and "target" here refer to *encoder*'s input files
 (SOURCE_READ, TARGET_READ, SOURCE_COPY, TARGET_COPY) = range(4)
 
-# value: (name, source_file)
+# action: (description, source_file)
 ACTION_DESCRIPTIONS = {
     SOURCE_READ: ("SourceRead", "original"),
     TARGET_READ: ("TargetRead", "patch"),
@@ -16,6 +16,8 @@ ACTION_DESCRIPTIONS = {
 # maximum unsigned integer to read from BPS file
 # (you may want to increase this in the future)
 MAX_UINT = 2 ** 64
+
+FOOTER_SIZE = 3 * 4
 
 def parse_args():
     # parse command line arguments
@@ -104,7 +106,7 @@ def decode_blocks(srcData, patchHnd, verbose):
         blkCnts = 4 * [0]
         blkByteCnts = 4 * [0]
 
-    while patchHnd.tell() < patchSize - 3 * 4:
+    while patchHnd.tell() < patchSize - FOOTER_SIZE:
         # for statistics
         origPatchPos = patchHnd.tell()
         origDstSize = len(dstData)
@@ -172,7 +174,7 @@ def decode_blocks(srcData, patchHnd, verbose):
     return dstData
 
 def apply_bps(origHnd, patchHnd, verbose):
-    # apply BPS patch from patchHnd to origHnd, return patched data
+    # apply BPS patch from patchHnd to origHnd, return patched data;
     # see https://gist.github.com/khadiwala/32550f44efcc36a5b6a470ff2d4c9c22
 
     origHnd.seek(0)
@@ -228,7 +230,7 @@ def apply_bps(origHnd, patchHnd, verbose):
         )
 
     # validate CRCs from footer
-    footer = read_bytes(3 * 4, patchHnd)
+    footer = read_bytes(FOOTER_SIZE, patchHnd)
     expectedCrcs = tuple(
         struct.unpack("<L", footer[i:i+4])[0] for i in (0, 4, 8)
     )

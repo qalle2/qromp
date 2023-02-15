@@ -2,11 +2,14 @@
 # Warning: this script deletes files. Run at your own risk.
 # .nes files: "e" = European, "u" = USA.
 # Most patches are from Romhacking.net ("fin" = Finnish translation).
+# "empty-nop.bps" does nothing to an empty file; in hex:
+#     42 50 53 31 80 80 80 00 00 00 00 00 00 00 00 93 1f d8 5e
 
 clear
-rm -f test-out/*.nes
+rm -f test-out/*
 
 echo "=== Applying BPS patches (1 verbosely) ==="
+python3 qromp_bps.py test-in-orig/empty         test-in-bps/empty-nop.bps     test-out/empty-nop
 python3 qromp_bps.py test-in-orig/megaman1u.nes test-in-bps/megaman1u-fin.bps test-out/megaman1u-fin.nes
 python3 qromp_bps.py test-in-orig/megaman4u.nes test-in-bps/megaman4u-fin.bps test-out/megaman4u-fin.nes
 python3 qromp_bps.py test-in-orig/smb1e.nes     test-in-bps/smb1e-fin.bps     test-out/smb1e-fin.nes -v
