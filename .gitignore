@@ -1,4 +1,5 @@
+test-in-bps/*
+test-in-ips/*
 test-in-orig/*
-test-in-patch/*
 test-in-patched/*
 test-out/*

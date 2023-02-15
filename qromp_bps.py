@@ -117,10 +117,7 @@ def decode_blocks(srcData, patchHnd, verbose):
         if action == SOURCE_READ:
             # copy from same address in original file
             if len(dstData) + length > len(srcData):
-                sys.exit(
-                    "SourceRead: tried to read from invalid position in "
-                    "original file."
-                )
+                sys.exit("SourceRead: invalid read position.")
             dstData.extend(srcData[len(dstData):len(dstData)+length])
         elif action == TARGET_READ:
             # copy from current address in patch
@@ -129,20 +126,14 @@ def decode_blocks(srcData, patchHnd, verbose):
             # copy from any address in original file
             srcOffset += read_signed_int(patchHnd)
             if srcOffset < 0 or srcOffset + length > len(srcData):
-                sys.exit(
-                    "SourceCopy: tried to read from invalid position in "
-                    "original file."
-                )
+                sys.exit("SourceCopy: invalid read position.")
             dstData.extend(srcData[srcOffset:srcOffset+length])
             srcOffset += length
         else:
             # TARGET_COPY - copy from any address in patched file
             dstOffset += read_signed_int(patchHnd)
             if not 0 <= dstOffset < len(dstData):
-                sys.exit(
-                    "TargetCopy: tried to read from invalid position in "
-                    "patched file."
-                )
+                sys.exit("TargetCopy: invalid read position.")
             # can't copy all in one go because newly-added bytes may also be
             # read; this algorithm keeps doubling the chunk size as long as
             # necessary
@@ -196,7 +187,7 @@ def apply_bps(origHnd, patchHnd, verbose):
     # header - file format id
     id_ = read_bytes(4, patchHnd)
     if id_[:3] != b"BPS":
-        sys.exit("Not a BPS file.")
+        sys.exit("Not a BPS patch.")
     if id_[3:] != b"1":
         print(
             "Warning: possibly unsupported version of BPS file.",

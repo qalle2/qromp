@@ -82,7 +82,7 @@ def apply_ips(origHnd, patchHnd, verbose):
     patchHnd.seek(0)
 
     if read_bytes(5, patchHnd) != b"PATCH":
-        sys.exit("Not an IPS file.")
+        sys.exit("Not an IPS patch.")
 
     if verbose:
         print(

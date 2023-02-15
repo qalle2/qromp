@@ -7,36 +7,27 @@ clear
 rm -f test-out/*.nes
 
 echo "=== Applying BPS patches (1 verbosely) ==="
-python3 qromp_bps.py test-in-orig/megaman1u.nes \
-    test-in-patch/megaman1u-fin.bps test-out/megaman1u-fin.nes
-python3 qromp_bps.py test-in-orig/megaman4u.nes \
-    test-in-patch/megaman4u-fin.bps test-out/megaman4u-fin.nes
-python3 qromp_bps.py test-in-orig/smb1e.nes \
-    test-in-patch/smb1e-fin.bps test-out/smb1e-fin.nes -v
-python3 qromp_bps.py test-in-orig/smb2e.nes \
-    test-in-patch/smb2e-fin.bps test-out/smb2e-fin.nes
-python3 qromp_bps.py test-in-orig/smb3e.nes \
-    test-in-patch/smb3e-fin.bps test-out/smb3e-fin.nes
+python3 qromp_bps.py test-in-orig/megaman1u.nes test-in-bps/megaman1u-fin.bps test-out/megaman1u-fin.nes
+python3 qromp_bps.py test-in-orig/megaman4u.nes test-in-bps/megaman4u-fin.bps test-out/megaman4u-fin.nes
+python3 qromp_bps.py test-in-orig/smb1e.nes     test-in-bps/smb1e-fin.bps     test-out/smb1e-fin.nes -v
+python3 qromp_bps.py test-in-orig/smb2e.nes     test-in-bps/smb2e-fin.bps     test-out/smb2e-fin.nes
+python3 qromp_bps.py test-in-orig/smb3e.nes     test-in-bps/smb3e-fin.bps     test-out/smb3e-fin.nes
 echo
 
 echo "=== Verifying patched files ==="
 md5sum -c --quiet test-dec-bps.md5
 echo
 
-echo "=== Four distinct errors and one warning ==="
-python3 qromp_bps.py nonexistent test-in-patch/smb1e-fin.bps \
-    test-out/temp1.nes
-python3 qromp_bps.py test-in-orig/smb1e.nes nonexistent.bps \
-    test-out/temp2.nes
-python3 qromp_bps.py test-in-orig/smb1e.nes test-in-patch/smb1e-fin.bps \
-    test-in-patch/nop.ips  # already exists
-python3 qromp_bps.py test-in-orig/smb1e.nes test-in-patch/smb3e-fin.bps \
-    test-out/temp3.nes  # read from invalid position
+echo "=== Five distinct errors and one warning ==="
+# input1 not found, input2 not found, output already exists, not a BPS file,
+# read from invalid position
+python3 qromp_bps.py nonexistent            test-in-bps/smb1e-fin.bps test-out/temp1.nes
+python3 qromp_bps.py test-in-orig/smb1e.nes nonexistent.bps           test-out/temp2.nes
+python3 qromp_bps.py test-in-orig/smb1e.nes test-in-bps/smb1e-fin.bps test-in-ips/nop.ips
+python3 qromp_bps.py test-in-orig/smb1e.nes test-in-ips/nop.ips       test-out/temp3.nes
+python3 qromp_bps.py test-in-orig/smb1e.nes test-in-bps/smb3e-fin.bps test-out/temp4.nes
 echo
 
-echo "=== Five size/CRC warnings ==="
-python3 qromp_bps.py test-in-orig/ducktales-e.nes \
-    test-in-patch/smb1e-fin.bps test-out/temp6.nes
-python3 qromp_bps.py test-in-orig/ducktales-e.nes \
-    test-in-patch/megaman1u-fin.bps test-out/temp7.nes
+echo "=== Four distinct size/CRC warnings ==="
+python3 qromp_bps.py test-in-orig/ducktales-e.nes test-in-bps/smb1e-corrupt.bps test-out/temp5.nes
 echo
