@@ -9,15 +9,15 @@ SOURCE_COPY = 2
 TARGET_COPY = 3  # unused atm
 
 # number of dots in BPS progress indicator
-PROGRESS_DOT_COUNT = 100
+PROGRESS_DOT_COUNT = 79
 
 def parse_args():
     # parse command line arguments
 
     parser = argparse.ArgumentParser(
         description="Qalle's BPS Patch Creator. Creates a BPS patch from "
-        "the differences of two files. Inefficient and slow. Prints a "
-        f"progress indicator ({PROGRESS_DOT_COUNT} dots)."
+        "the differences of two files. Slow. Prints a progress indicator "
+        f"({PROGRESS_DOT_COUNT} dots)."
     )
 
     parser.add_argument(
@@ -79,48 +79,23 @@ def find_longest_prefix(str1, str2):
     # return length of longest prefix of str1 that occurs anywhere in str2
     # using binary search
 
-    minLen = 0  # lower limit found
-    maxLen = min(len(str1), len(str2))  # upper limit found
+    minLen = 0
+    maxLen = min(len(str1), len(str2))
 
-    while True:
-        if minLen == maxLen:
-            return minLen
+    while minLen < maxLen:
         avgLen = (minLen + maxLen + 1) // 2
         if str1[:avgLen] in str2:
             minLen = avgLen
         else:
             maxLen = avgLen - 1
 
-def find_substrings(str1, str2, minCopyLen):
-    # find substrings in str1 that occur anywhere in str2;
-    # generate (start_in_str1, length);
-    # e.g. "abcd", "cxab" -> (0, 2), (2, 1)
-    # almost all the time is spent here (almost 4 min for largest test file)
-
-    pos1 = 0  # position in str1
-    dotsPrinted = 0
-
-    while pos1 < len(str1):
-        # print progress indicator
-        dotsSoFar = pos1 * PROGRESS_DOT_COUNT // len(str1)
-        if dotsSoFar > dotsPrinted:
-            print((dotsSoFar - dotsPrinted) * ".", end="", flush=True)
-            dotsPrinted = dotsSoFar
-        # speed up by checking for minimum length first
-        if len(str1) - pos1 >= minCopyLen \
-        and str1[pos1:pos1+minCopyLen] in str2:
-            prefixLen = find_longest_prefix(str1[pos1:], str2)
-            yield (pos1, prefixLen)
-            pos1 += prefixLen
-        else:
-            pos1 += 1
-
-    print((PROGRESS_DOT_COUNT - dotsPrinted) * ".")
+    return minLen
 
 def create_bps(handle1, handle2, minCopyLen):
     # create a BPS patch from the difference of two files;
     # generate patch data except for patch CRC at the end;
-    # note: doesn't use the TARGET_COPY action at all
+    # the encoder doesn't take advantage of TARGET_COPY blocks being able to
+    # extend past the end of the patched file
 
     handle1.seek(0)
     data1 = handle1.read()
@@ -128,37 +103,77 @@ def create_bps(handle1, handle2, minCopyLen):
     data2 = handle2.read()
 
     # header (id, source/target file size, metadata size)
-    yield b"BPS1" + b"".join(
-        encode_int(n) for n in (len(data1), len(data2), 0)
-    )
+    yield b"BPS1"
+    yield b"".join(encode_int(n) for n in (len(data1), len(data2), 0))
 
-    # find identical substrings: [(start_in_data2, length), ...]
-    data2Substrs = list(s for s in find_substrings(data2, data1, minCopyLen))
+    data2Pos = 0       # position in data2
+    trgReadStart = -1  # start of TARGET_READ in data2 (-1 = none)
+    srcCopyOffset = 0  # used by SOURCE_COPY
+    trgCopyOffset = 0  # used by TARGET_COPY
+    dotsPrinted = 0    # progress indicator
 
-    # create patch data
-    data2Pos = 0  # data2 read position
-    srcOffset = 0  # used by SOURCE_COPY
-    for (start, length) in data2Substrs:
-        if start > data2Pos:
-            # differing data since previous identical substring
-            yield block_start(start - data2Pos, TARGET_READ)
-            yield data2[data2Pos:start]
-        # identical substring
-        data1Pos = data1.index(data2[start:start+length])
-        if data1Pos == start:
-            yield block_start(length, SOURCE_READ)
+    while data2Pos < len(data2):
+        # update progress indicator
+        dotsSoFar = data2Pos * PROGRESS_DOT_COUNT // len(data2)
+        if dotsSoFar > dotsPrinted:
+            print((dotsSoFar - dotsPrinted) * ".", end="", flush=True)
+            dotsPrinted = dotsSoFar
+
+        # find longest prefix of data2 in data1 and data2 (so far);
+        # optimize for speed by checking minimum length first
+        if data2[data2Pos:data2Pos+minCopyLen] in data1:
+            data1CopyLen = find_longest_prefix(data2[data2Pos:], data1)
         else:
-            yield block_start(length, SOURCE_COPY)
-            yield encode_signed(data1Pos - srcOffset)
-            srcOffset = data1Pos + length
-        data2Pos = start + length
+            data1CopyLen = 0
+        if data2[data2Pos:data2Pos+minCopyLen] in data2[:data2Pos]:
+            data2CopyLen \
+            = find_longest_prefix(data2[data2Pos:], data2[:data2Pos])
+        else:
+            data2CopyLen = 0
 
-    if len(data2) > data2Pos:
-        # differing data after final identical substring
-        yield block_start(len(data2) - data2Pos, TARGET_READ)
-        yield data2[data2Pos:]
+        if max(data1CopyLen, data2CopyLen) >= minCopyLen:
+            # end ongoing TARGET_READ block if necessary
+            if trgReadStart != -1:
+                yield block_start(data2Pos - trgReadStart, TARGET_READ)
+                yield data2[trgReadStart:data2Pos]
+                trgReadStart = -1
 
-    # footer except patch CRC (source/target file CRC)
+            # output a SOURCE_READ, SOURCE_COPY or TARGET_COPY block
+            if data1CopyLen >= data2CopyLen:
+                if data1[data2Pos:data2Pos+data1CopyLen] \
+                == data2[data2Pos:data2Pos+data1CopyLen]:
+                    # tell decoder to copy from current position in data1
+                    yield block_start(data1CopyLen, SOURCE_READ)
+                else:
+                    # tell decoder to copy from specified position in data1
+                    copyPos \
+                    = data1.index(data2[data2Pos:data2Pos+data1CopyLen])
+                    yield block_start(data1CopyLen, SOURCE_COPY)
+                    yield encode_signed(copyPos - srcCopyOffset)
+                    srcCopyOffset = copyPos + data1CopyLen
+                data2Pos += data1CopyLen
+            else:
+                # tell decoder to copy from specified position in data2
+                copyPos \
+                = data2[:data2Pos].index(data2[data2Pos:data2Pos+data2CopyLen])
+                yield block_start(data2CopyLen, TARGET_COPY)
+                yield encode_signed(copyPos - trgCopyOffset)
+                trgCopyOffset = copyPos + data2CopyLen
+                data2Pos += data2CopyLen
+        else:
+            # start a new TARGET_READ block if necessary
+            if trgReadStart == -1:
+                trgReadStart = data2Pos
+            data2Pos += 1
+
+    # end final TARGET_READ block if necessary
+    if trgReadStart != -1:
+        yield block_start(len(data2) - trgReadStart, TARGET_READ)
+        yield data2[trgReadStart:]
+
+    print((PROGRESS_DOT_COUNT - dotsPrinted) * ".")
+
+    # footer except for patch CRC (source/target file CRC)
     yield struct.pack("<2L", crc32(data1), crc32(data2))
 
 # -----------------------------------------------------------------------------
@@ -168,12 +183,12 @@ def main():
     args = parse_args()
 
     # create patch data
-    patch = bytearray()
     try:
         with open(args.orig_file, "rb") as handle1, \
         open(args.modified_file, "rb") as handle2:
-            for bytes_ in create_bps(handle1, handle2, args.min_copy):
-                patch.extend(bytes_)
+            patch = bytearray()
+            for chunk in create_bps(handle1, handle2, args.min_copy):
+                patch.extend(chunk)
             patch.extend(struct.pack("<L", crc32(patch)))
     except OSError:
         sys.exit("Error reading input files.")
