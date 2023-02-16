@@ -7,6 +7,7 @@ rm -f test-out/*
 echo "=== Creating IPS patches ==="
 python3 qromp_enc_ips.py test-in-orig/ducktales-e.nes test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin.ips
 python3 qromp_enc_ips.py test-in-orig/ducktales-e.nes test-in-patched/ducktales-e-fin.nes test-out/ducktales-e-fin-u2.ips --max-unchg 2
+python3 qromp_enc_ips.py test-in-orig/empty           test-in-orig/1k-zeroes              test-out/empty-to-1k-zeroes.ips
 python3 qromp_enc_ips.py test-in-orig/empty           test-in-orig/empty                  test-out/empty-nop.ips
 python3 qromp_enc_ips.py test-in-orig/megaman2u.nes   test-in-patched/megaman2u-fin.nes   test-out/megaman2u-fin.ips
 python3 qromp_enc_ips.py test-in-orig/smb1e.nes       test-in-patched/smb1e-fin.nes       test-out/smb1e-fin.ips
@@ -22,6 +23,7 @@ echo
 echo "=== Applying IPS patches, verifying patched files ==="
 python3 qromp_ips.py test-in-orig/ducktales-e.nes test-out/ducktales-e-fin.ips    test-out/ducktales-e-fin.nes
 python3 qromp_ips.py test-in-orig/ducktales-e.nes test-out/ducktales-e-fin-u2.ips test-out/ducktales-e-fin-u2.nes
+python3 qromp_ips.py test-in-orig/empty           test-out/empty-to-1k-zeroes.ips test-out/1k-zeroes
 python3 qromp_ips.py test-in-orig/empty           test-out/empty-nop.ips          test-out/empty-nop
 python3 qromp_ips.py test-in-orig/megaman2u.nes   test-out/megaman2u-fin.ips      test-out/megaman2u-fin.nes
 python3 qromp_ips.py test-in-orig/smb1e.nes       test-out/smb1e-fin.ips          test-out/smb1e-fin.nes

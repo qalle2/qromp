@@ -6,6 +6,7 @@ clear
 rm -f test-out/*
 
 echo "=== Creating BPS patches ==="
+python3 qromp_enc_bps.py test-in-orig/empty         test-in-orig/1k-zeroes             test-out/empty-to-1k-zeroes.bps
 python3 qromp_enc_bps.py test-in-orig/empty         test-in-orig/empty                 test-out/empty-nop.bps
 python3 qromp_enc_bps.py test-in-orig/megaman1u.nes test-in-patched/megaman1u-fin.nes  test-out/megaman1u-fin.bps
 python3 qromp_enc_bps.py test-in-orig/megaman4u.nes test-in-patched/megaman4u-fin.nes  test-out/megaman4u-fin.bps
@@ -21,6 +22,7 @@ ls -l test-out/*.bps
 echo
 
 echo "=== Applying BPS patches, verifying patched files ==="
+python3 qromp_bps.py test-in-orig/empty         test-out/empty-to-1k-zeroes.bps  test-out/1k-zeroes
 python3 qromp_bps.py test-in-orig/empty         test-out/empty-nop.bps           test-out/empty-nop
 python3 qromp_bps.py test-in-orig/megaman1u.nes test-out/megaman1u-fin.bps       test-out/megaman1u-fin.nes
 python3 qromp_bps.py test-in-orig/megaman4u.nes test-out/megaman4u-fin.bps       test-out/megaman4u-fin.nes
