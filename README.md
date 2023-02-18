@@ -59,9 +59,10 @@ positional arguments:
 
 options:
   -h, --help           show this help message and exit
-  --min-copy MIN_COPY  Minimum length of substring to copy from original file.
-                       1-20, default=4. Affects efficiency, memory use and
-                       speed.
+  --min-copy MIN_COPY  Minimum length of substrings to copy from original or
+                       patched file. 1-32, default=4. A larger value is
+                       usually faster but less efficient and requires more
+                       memory.
 ```
 
 ## qromp_enc_ips.py

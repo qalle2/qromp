@@ -1,4 +1,4 @@
-import argparse, collections, os, struct, sys, time
+import argparse, os, struct, sys, time
 from zlib import crc32
 
 # actions (types of BPS blocks); note that "source" and "target" here refer to
@@ -18,8 +18,9 @@ def parse_args():
 
     parser.add_argument(
         "--min-copy", type=int, default=4,
-        help="Minimum length of substring to copy from original file. 1-20, "
-        "default=4. Affects efficiency, memory use and speed."
+        help="Minimum length of substrings to copy from original or patched "
+        "file. 1-32, default=4. A larger value is usually faster but less "
+        "efficient and requires more memory."
     )
 
     parser.add_argument(
@@ -34,7 +35,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if not 1 <= args.min_copy <= 20:
+    if not 1 <= args.min_copy <= 32:
         sys.exit("Invalid '--min-copy' value.")
 
     if not os.path.isfile(args.orig_file):
@@ -102,25 +103,39 @@ def create_bps(handle1, handle2, minCopyLen):
     yield b"BPS1"
     yield b"".join(encode_int(n) for n in (len(data1), len(data2), 0))
 
-    # get unique minimum-length substrings in original file
-    # (speeds up a lot but also takes a lot of memory)
+    # unique minimum-length substrings in original/patched file;
+    # these speed up the encoder a lot but also take a lot of memory;
+    # for the patched file, the set must be built incrementally because the
+    # decoder can't read data it has not yet written
     data1MinSubstrs = frozenset(
         data1[i:i+minCopyLen] for i in range(0, len(data1) - minCopyLen + 1, 1)
     )
+    data2MinSubstrs = set()
 
     data2Pos = 0       # position in data2
+    prevData2Pos = 0   # previous position in data2
     trgReadStart = -1  # start of TARGET_READ in data2 (-1 = none)
     srcCopyOffset = 0  # used by SOURCE_COPY
     trgCopyOffset = 0  # used by TARGET_COPY
 
     while data2Pos < len(data2):
+        # add minimum-length substrings that the decoder has become aware of
+        # on the previous round
+        data2MinSubstrs.update(
+            data2[i:i+minCopyLen] for i in range(
+                max(prevData2Pos - minCopyLen + 1, 0),
+                max(data2Pos - minCopyLen + 1, 0),
+            )
+        )
+        prevData2Pos = data2Pos
+
         # find longest prefix of data2 in data1 and data2 (so far);
         # optimize for speed by checking minimum length first
         if data2[data2Pos:data2Pos+minCopyLen] in data1MinSubstrs:
             data1CopyLen = find_longest_prefix(data2[data2Pos:], data1)
         else:
             data1CopyLen = 0
-        if data2[data2Pos:data2Pos+minCopyLen] in data2[:data2Pos]:
+        if data2[data2Pos:data2Pos+minCopyLen] in data2MinSubstrs:
             data2CopyLen \
             = find_longest_prefix(data2[data2Pos:], data2[:data2Pos])
         else:
