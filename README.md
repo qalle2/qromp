@@ -50,7 +50,7 @@ usage: qromp_enc_bps.py [-h] [--min-copy MIN_COPY]
                         orig_file modified_file patch_file
 
 Qalle's BPS Patch Creator. Creates a BPS patch from the differences of two
-files. Slow. Prints a progress indicator (79 dots).
+files. Slow.
 
 positional arguments:
   orig_file            Original file to read.
@@ -60,7 +60,8 @@ positional arguments:
 options:
   -h, --help           show this help message and exit
   --min-copy MIN_COPY  Minimum length of substring to copy from original file.
-                       1-20, default=4. Affects efficiency. Larger=faster.
+                       1-20, default=4. Affects efficiency, memory use and
+                       speed.
 ```
 
 ## qromp_enc_ips.py

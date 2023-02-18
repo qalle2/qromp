@@ -1,4 +1,4 @@
-import argparse, os, struct, sys, time
+import argparse, collections, os, struct, sys, time
 from zlib import crc32
 
 # actions (types of BPS blocks); note that "source" and "target" here refer to
@@ -6,24 +6,20 @@ from zlib import crc32
 SOURCE_READ = 0
 TARGET_READ = 1
 SOURCE_COPY = 2
-TARGET_COPY = 3  # unused atm
-
-# number of dots in BPS progress indicator
-PROGRESS_DOT_COUNT = 79
+TARGET_COPY = 3
 
 def parse_args():
     # parse command line arguments
 
     parser = argparse.ArgumentParser(
         description="Qalle's BPS Patch Creator. Creates a BPS patch from "
-        "the differences of two files. Slow. Prints a progress indicator "
-        f"({PROGRESS_DOT_COUNT} dots)."
+        "the differences of two files. Slow."
     )
 
     parser.add_argument(
         "--min-copy", type=int, default=4,
         help="Minimum length of substring to copy from original file. 1-20, "
-        "default=4. Affects efficiency. Larger=faster."
+        "default=4. Affects efficiency, memory use and speed."
     )
 
     parser.add_argument(
@@ -106,22 +102,21 @@ def create_bps(handle1, handle2, minCopyLen):
     yield b"BPS1"
     yield b"".join(encode_int(n) for n in (len(data1), len(data2), 0))
 
+    # get unique minimum-length substrings in original file
+    # (speeds up a lot but also takes a lot of memory)
+    data1MinSubstrs = frozenset(
+        data1[i:i+minCopyLen] for i in range(0, len(data1) - minCopyLen + 1, 1)
+    )
+
     data2Pos = 0       # position in data2
     trgReadStart = -1  # start of TARGET_READ in data2 (-1 = none)
     srcCopyOffset = 0  # used by SOURCE_COPY
     trgCopyOffset = 0  # used by TARGET_COPY
-    dotsPrinted = 0    # progress indicator
 
     while data2Pos < len(data2):
-        # update progress indicator
-        dotsSoFar = data2Pos * PROGRESS_DOT_COUNT // len(data2)
-        if dotsSoFar > dotsPrinted:
-            print((dotsSoFar - dotsPrinted) * ".", end="", flush=True)
-            dotsPrinted = dotsSoFar
-
         # find longest prefix of data2 in data1 and data2 (so far);
         # optimize for speed by checking minimum length first
-        if data2[data2Pos:data2Pos+minCopyLen] in data1:
+        if data2[data2Pos:data2Pos+minCopyLen] in data1MinSubstrs:
             data1CopyLen = find_longest_prefix(data2[data2Pos:], data1)
         else:
             data1CopyLen = 0
@@ -170,8 +165,6 @@ def create_bps(handle1, handle2, minCopyLen):
     if trgReadStart != -1:
         yield block_start(len(data2) - trgReadStart, TARGET_READ)
         yield data2[trgReadStart:]
-
-    print((PROGRESS_DOT_COUNT - dotsPrinted) * ".")
 
     # footer except for patch CRC (source/target file CRC)
     yield struct.pack("<2L", crc32(data1), crc32(data2))
