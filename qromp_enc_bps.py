@@ -64,7 +64,7 @@ def encode_int(n):
         n = (n >> 7) - 1
     return bytes(encoded)
 
-def encode_signed(n):
+def encode_signed_int(n):
     # encode a signed BPS integer
     return encode_int((abs(n) << 1) | (1 if n < 0 else 0))
 
@@ -90,7 +90,7 @@ def find_longest_prefix(str1, str2):
 
 def create_bps(handle1, handle2, minCopyLen):
     # create a BPS patch from the difference of two files;
-    # generate patch data except for patch CRC at the end;
+    # generate patch data except for the patch CRC at the end;
     # the encoder doesn't take advantage of TARGET_COPY blocks being able to
     # extend past the end of the patched file
 
@@ -115,8 +115,8 @@ def create_bps(handle1, handle2, minCopyLen):
     data2Pos = 0       # position in data2
     prevData2Pos = 0   # previous position in data2
     trgReadStart = -1  # start of TARGET_READ in data2 (-1 = none)
-    srcCopyOffset = 0  # used by SOURCE_COPY
-    trgCopyOffset = 0  # used by TARGET_COPY
+    srcCopyOffset = 0  # SOURCE_COPY's position in data1
+    trgCopyOffset = 0  # TARGET_COPY's position in data2
 
     while data2Pos < len(data2):
         # add minimum-length substrings that the decoder has become aware of
@@ -141,42 +141,51 @@ def create_bps(handle1, handle2, minCopyLen):
         else:
             data2CopyLen = 0
 
-        if max(data1CopyLen, data2CopyLen) >= minCopyLen:
-            # end ongoing TARGET_READ block if necessary
-            if trgReadStart != -1:
-                yield block_start(data2Pos - trgReadStart, TARGET_READ)
-                yield data2[trgReadStart:data2Pos]
-                trgReadStart = -1
-
-            # output a SOURCE_READ, SOURCE_COPY or TARGET_COPY block
-            if data1CopyLen >= data2CopyLen:
-                if data1[data2Pos:data2Pos+data1CopyLen] \
-                == data2[data2Pos:data2Pos+data1CopyLen]:
-                    # tell decoder to copy from current position in data1
-                    yield block_start(data1CopyLen, SOURCE_READ)
-                else:
-                    # tell decoder to copy from specified position in data1
-                    copyPos \
-                    = data1.index(data2[data2Pos:data2Pos+data1CopyLen])
-                    yield block_start(data1CopyLen, SOURCE_COPY)
-                    yield encode_signed(copyPos - srcCopyOffset)
-                    srcCopyOffset = copyPos + data1CopyLen
-                data2Pos += data1CopyLen
+        # choose action
+        if data1CopyLen >= max(data2CopyLen, minCopyLen):
+            if data1[data2Pos:data2Pos+data1CopyLen] \
+            == data2[data2Pos:data2Pos+data1CopyLen]:
+                action = SOURCE_READ
             else:
-                # tell decoder to copy from specified position in data2
-                copyPos \
-                = data2[:data2Pos].index(data2[data2Pos:data2Pos+data2CopyLen])
-                yield block_start(data2CopyLen, TARGET_COPY)
-                yield encode_signed(copyPos - trgCopyOffset)
-                trgCopyOffset = copyPos + data2CopyLen
-                data2Pos += data2CopyLen
+                action = SOURCE_COPY
+        elif data2CopyLen >= minCopyLen:
+            action = TARGET_COPY
         else:
-            # start a new TARGET_READ block if necessary
+            action = TARGET_READ
+
+        # end a TARGET_READ block before any other block
+        if action != TARGET_READ and trgReadStart != -1:
+            # tell decoder to copy from patch file
+            yield block_start(data2Pos - trgReadStart, TARGET_READ)
+            yield data2[trgReadStart:data2Pos]
+            trgReadStart = -1
+
+        if action == SOURCE_READ:
+            # tell decoder to copy from current position in data1
+            yield block_start(data1CopyLen, SOURCE_READ)
+            data2Pos += data1CopyLen
+        elif action == SOURCE_COPY:
+            # tell decoder to copy from specified position in data1
+            copyPos = data1.index(data2[data2Pos:data2Pos+data1CopyLen])
+            yield block_start(data1CopyLen, SOURCE_COPY)
+            yield encode_signed_int(copyPos - srcCopyOffset)
+            srcCopyOffset = copyPos + data1CopyLen
+            data2Pos += data1CopyLen
+        elif action == TARGET_COPY:
+            # tell decoder to copy from specified position in data2
+            copyPos \
+            = data2[:data2Pos].index(data2[data2Pos:data2Pos+data2CopyLen])
+            yield block_start(data2CopyLen, TARGET_COPY)
+            yield encode_signed_int(copyPos - trgCopyOffset)
+            trgCopyOffset = copyPos + data2CopyLen
+            data2Pos += data2CopyLen
+        else:
+            # TARGET_READ; start a new block if necessary
             if trgReadStart == -1:
                 trgReadStart = data2Pos
             data2Pos += 1
 
-    # end final TARGET_READ block if necessary
+    # end final TARGET_READ block
     if trgReadStart != -1:
         yield block_start(len(data2) - trgReadStart, TARGET_READ)
         yield data2[trgReadStart:]
