@@ -67,7 +67,8 @@ options:
 
 ## qromp_enc_ips.py
 ```
-usage: qromp_enc_ips.py [-h] [--max-unchg MAX_UNCHG]
+usage: qromp_enc_ips.py [-h] [--min-rle-len MIN_RLE_LEN]
+                        [--max-unchg-len MAX_UNCHG_LEN]
                         orig_file modified_file patch_file
 
 Qalle's IPS Patch Creator. Creates an IPS patch from the differences of two
@@ -81,8 +82,11 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  --max-unchg MAX_UNCHG
-                        Maximum length of unchanged substring to store. 0-10,
+  --min-rle-len MIN_RLE_LEN
+                        Minimum length of blocks to encode as RLE. 1-16,
+                        default=9. Affects efficiency.
+  --max-unchg-len MAX_UNCHG_LEN
+                        Maximum length of unchanged substring to store. 0-16,
                         default=1. Affects efficiency.
 ```
 

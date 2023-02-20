@@ -1,6 +1,5 @@
-import argparse, os, sys, time
+import argparse, os, sys
 
-MIN_RLE_LEN = 9       # minimum length of RLE blocks
 MAX_BLK_LEN = 0xffff  # maximum length of any block
 
 def parse_args():
@@ -12,8 +11,13 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--max-unchg", type=int, default=1,
-        help="Maximum length of unchanged substring to store. 0-10, "
+        "--min-rle-len", type=int, default=9,
+        help="Minimum length of blocks to encode as RLE. 1-16, default=9. "
+        "Affects efficiency."
+    )
+    parser.add_argument(
+        "--max-unchg-len", type=int, default=1,
+        help="Maximum length of unchanged substring to store. 0-16, "
         "default=1. Affects efficiency."
     )
 
@@ -31,8 +35,10 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if not 0 <= args.max_unchg <= 10:
-        sys.exit("Invalid '--max-unchg' value.")
+    if not 1 <= args.min_rle_len <= 16:
+        sys.exit("Invalid '--min-rle-len' value.")
+    if not 0 <= args.max_unchg_len <= 16:
+        sys.exit("Invalid '--max-unchg-len' value.")
 
     if not os.path.isfile(args.orig_file):
         sys.exit("Original file not found.")
@@ -42,8 +48,6 @@ def parse_args():
         sys.exit("Output file already exists.")
 
     return args
-
-# -----------------------------------------------------------------------------
 
 def get_blocks(data1, data2):
     # generate (start, length) of blocks that differ
@@ -71,9 +75,8 @@ def get_blocks(data1, data2):
     for start in range(len(data1), len(data2), MAX_BLK_LEN):
         yield (start, min(len(data2) - start, MAX_BLK_LEN))
 
-def get_optimized_blocks(data1, data2, maxGap):
-    # generate (start, length) of blocks that differ, with some blocks merged;
-    # maxGap: maximum number of unchanged bytes between two merged blocks
+def get_optimized_blocks(data1, data2, args):
+    # generate (start, length) of blocks that differ, with some blocks merged
 
     blockBuf = []  # blocks not generated yet
     for (start, length) in get_blocks(data1, data2):
@@ -81,7 +84,7 @@ def get_optimized_blocks(data1, data2, maxGap):
         # if gap between last two blocks is too large
         # or the whole buffer is too large...
         if len(blockBuf) >= 2 and (
-            blockBuf[-1][0] - sum(blockBuf[-2]) > maxGap
+            blockBuf[-1][0] - sum(blockBuf[-2]) > args.max_unchg_len
             or sum(blockBuf[-1]) - blockBuf[0][0] > MAX_BLK_LEN
         ):
             # ...output all but the last block as one and delete from buffer
@@ -92,13 +95,11 @@ def get_optimized_blocks(data1, data2, maxGap):
         # output remaining blocks
         yield (blockBuf[0][0], sum(blockBuf[-1]) - blockBuf[0][0])
 
-def get_subblocks(data1, data2, maxUnchanged):
+def get_subblocks(data1, data2, args):
     # split blocks that differ into RLE and non-RLE subblocks;
     # generate (start, length, is_RLE)
 
-    for (blkStart, blkLen) in get_optimized_blocks(
-        data1, data2, maxUnchanged
-    ):
+    for (blkStart, blkLen) in get_optimized_blocks(data1, data2, args):
         block = data2[blkStart:blkStart+blkLen]
 
         # split block into RLE/non-RLE subblocks;
@@ -116,7 +117,7 @@ def get_subblocks(data1, data2, maxUnchanged):
                 )
                 rleLen = subPos - subStart - nonRleLen
                 # don't create short RLE blocks
-                if rleLen < MIN_RLE_LEN:
+                if rleLen < args.min_rle_len:
                     nonRleLen += rleLen
                     rleLen = 0
                 else:
@@ -128,7 +129,7 @@ def get_subblocks(data1, data2, maxUnchanged):
         # same for the last byte in block
         nonRleLen = len(block[subStart:].rstrip(block[-1:]))
         rleLen = blkLen - subStart - nonRleLen
-        if rleLen < MIN_RLE_LEN:
+        if rleLen < args.min_rle_len:
             nonRleLen += rleLen
             rleLen = 0
         if nonRleLen:
@@ -146,12 +147,6 @@ def create_ips(handle1, handle2, args):
 
     handle1.seek(0)
     origData = handle1.read()
-    if len(origData) > 2 ** 24:
-        sys.exit(
-            "Creating an IPS patch from files larger than 16 MiB is not "
-            "supported."
-        )
-
     handle2.seek(0)
     newData = handle2.read()
 
@@ -169,10 +164,7 @@ def create_ips(handle1, handle2, args):
 
     yield b"EOF"
 
-# -----------------------------------------------------------------------------
-
 def main():
-    startTime = time.time()
     args = parse_args()
 
     # create patch data
@@ -180,11 +172,13 @@ def main():
     try:
         with open(args.orig_file, "rb") as handle1, \
         open(args.modified_file, "rb") as handle2:
+            if max(handle1.seek(0, 2), handle2.seek(0, 2)) > 2 ** 24:
+                sys.exit("Input files must not be larger than 16 MiB.")
             if handle1.seek(0, 2) > handle2.seek(0, 2):
                 sys.exit(
-                    "Second input file must be at least as large as first."
+                    "Second input file must not be smaller than first one."
                 )
-            for bytes_ in create_ips(handle1, handle2, args.max_unchg):
+            for bytes_ in create_ips(handle1, handle2, args):
                 patch.extend(bytes_)
     except OSError:
         sys.exit("Error reading input files.")
@@ -196,7 +190,5 @@ def main():
             handle.write(patch)
     except OSError:
         sys.exit("Error writing output file.")
-
-    print("Time:", format(time.time() - startTime, ".1f"), "s")
 
 main()
