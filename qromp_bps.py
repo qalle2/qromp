@@ -5,12 +5,11 @@ from zlib import crc32
 # note that "source" and "target" here refer to *encoder*'s input files
 (SOURCE_READ, TARGET_READ, SOURCE_COPY, TARGET_COPY) = range(4)
 
-# action: (description, source_file)
 ACTION_DESCRIPTIONS = {
-    SOURCE_READ: ("SourceRead", "original"),
-    TARGET_READ: ("TargetRead", "patch"),
-    SOURCE_COPY: ("SourceCopy", "original"),
-    TARGET_COPY: ("TargetCopy", "patched"),
+    SOURCE_READ: "SourceRead",
+    TARGET_READ: "TargetRead",
+    SOURCE_COPY: "SourceCopy",
+    TARGET_COPY: "TargetCopy",
 }
 
 # maximum unsigned integer to read from BPS file
@@ -63,7 +62,7 @@ def read_bytes(n, handle):
         sys.exit("Unexpected end of patch file.")
     return data
 
-def read_int(handle):
+def read_bps_int(handle):
     # read an unsigned BPS integer starting from current file position;
     # final byte has MSB set, all other bytes have MSB clear;
     # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14)
@@ -80,9 +79,9 @@ def read_int(handle):
         decoded += 1 << shift
     return decoded
 
-def read_signed_int(handle):
+def read_signed_bps_int(handle):
     # read a signed BPS integer
-    n = read_int(handle)
+    n = read_bps_int(handle)
     return (-1 if n & 1 else 1) * (n >> 1)
 
 def decode_blocks(srcData, patchHnd, verbose):
@@ -99,8 +98,7 @@ def decode_blocks(srcData, patchHnd, verbose):
     if verbose:
         print(
             "Address in patch file / patched file size before action / "
-            "action / file to copy from / address to copy from / "
-            "bytes to output:"
+            "action / address to copy from / bytes to output:"
         )
         # statistics by action
         blkCnts = 4 * [0]
@@ -112,7 +110,7 @@ def decode_blocks(srcData, patchHnd, verbose):
         origDstSize = len(dstData)
 
         # get length and type of block
-        lengthAndAction = read_int(patchHnd)
+        lengthAndAction = read_bps_int(patchHnd)
         length = (lengthAndAction >> 2) + 1
         action = lengthAndAction & 3
 
@@ -126,14 +124,14 @@ def decode_blocks(srcData, patchHnd, verbose):
             dstData.extend(read_bytes(length, patchHnd))
         elif action == SOURCE_COPY:
             # copy from any address in original file
-            srcOffset += read_signed_int(patchHnd)
+            srcOffset += read_signed_bps_int(patchHnd)
             if srcOffset < 0 or srcOffset + length > len(srcData):
                 sys.exit("SourceCopy: invalid read position.")
             dstData.extend(srcData[srcOffset:srcOffset+length])
             srcOffset += length
         else:
             # TARGET_COPY - copy from any address in patched file
-            dstOffset += read_signed_int(patchHnd)
+            dstOffset += read_signed_bps_int(patchHnd)
             if not 0 <= dstOffset < len(dstData):
                 sys.exit("TargetCopy: invalid read position.")
             # can't copy all in one go because newly-added bytes may also be
@@ -149,7 +147,6 @@ def decode_blocks(srcData, patchHnd, verbose):
                 dstOffset += chunkSize
 
         if verbose:
-            (actName, srcFile) = ACTION_DESCRIPTIONS[action]
             srcAddr = (
                 origDstSize,               # SOURCE_READ
                 patchHnd.tell() - length,  # TARGET_READ
@@ -157,8 +154,8 @@ def decode_blocks(srcData, patchHnd, verbose):
                 dstOffset - length,        # TARGET_COPY
             )[action]
             print(
-                f"{origPatchPos:10} {origDstSize:10} {actName} {srcFile:10} "
-                f"{srcAddr:10} {length:10}"
+                f"{origPatchPos:10} {origDstSize:10} "
+                f"{ACTION_DESCRIPTIONS[action]} {srcAddr:10} {length:10}"
             )
             blkCnts[action] += 1
             blkByteCnts[action] += length
@@ -168,14 +165,14 @@ def decode_blocks(srcData, patchHnd, verbose):
         for action in range(4):
             print(
                 f"- {blkByteCnts[action]} bytes output by {blkCnts[action]} "
-                f"{ACTION_DESCRIPTIONS[action][0]} blocks"
+                f"{ACTION_DESCRIPTIONS[action]} blocks"
             )
 
     return dstData
 
 def apply_bps(origHnd, patchHnd, verbose):
     # apply BPS patch from patchHnd to origHnd, return patched data;
-    # see https://gist.github.com/khadiwala/32550f44efcc36a5b6a470ff2d4c9c22
+    # see "bps-spec.txt" for file format specs
 
     origHnd.seek(0)
     srcData = origHnd.read()
@@ -197,8 +194,8 @@ def apply_bps(origHnd, patchHnd, verbose):
         )
 
     # header - file sizes
-    hdrSrcSize = read_int(patchHnd)
-    hdrDstSize = read_int(patchHnd)
+    hdrSrcSize = read_bps_int(patchHnd)
+    hdrDstSize = read_bps_int(patchHnd)
     if verbose:
         print(
             f"Expected file sizes: original={hdrSrcSize}, "
@@ -211,7 +208,7 @@ def apply_bps(origHnd, patchHnd, verbose):
         )
 
     # header - metadata
-    metadataSize = read_int(patchHnd)
+    metadataSize = read_bps_int(patchHnd)
     if metadataSize:
         metadata = read_bytes(metadataSize, patchHnd)
         if verbose:

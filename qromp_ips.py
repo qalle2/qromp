@@ -70,8 +70,7 @@ def get_blocks(handle):
 
 def apply_ips(origHnd, patchHnd, verbose):
     # apply IPS patch from patchHnd to origHnd, return patched data;
-    # see https://zerosoft.zophar.net/ips.php
-    # note: the patch is allowed to append data to the end of the file
+    # see "ips-spec.txt" for file format specs
 
     origHnd.seek(0)
     data = bytearray(origHnd.read())
