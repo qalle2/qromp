@@ -7,14 +7,14 @@ rm -f test-out/*
 
 echo "=== Creating BPS patches ==="
 python3 qromp_enc_bps.py test-in-orig/empty         test-in-orig/1k-zeroes             test-out/empty-to-1k-zeroes.bps
-python3 qromp_enc_bps.py test-in-orig/empty         test-in-orig/empty                 test-out/empty-nop.bps
+python3 qromp_enc_bps.py test-in-orig/empty         test-in-orig/empty                 test-out/empty-nop.bps --metadata "This is metadata."
 python3 qromp_enc_bps.py test-in-orig/megaman1u.nes test-in-patched/megaman1u-fin.nes  test-out/megaman1u-fin.bps
 python3 qromp_enc_bps.py test-in-orig/megaman4u.nes test-in-patched/megaman4u-fin.nes  test-out/megaman4u-fin.bps
-python3 qromp_enc_bps.py test-in-orig/megaman4u.nes test-in-patched/megaman4u-fin.nes  test-out/megaman4u-fin-copy8.bps --min-copy 8
+python3 qromp_enc_bps.py test-in-orig/megaman4u.nes test-in-patched/megaman4u-fin.nes  test-out/megaman4u-fin-copy8.bps --min-copy-len 8
 python3 qromp_enc_bps.py test-in-orig/smb1e.nes     test-in-patched/smb1e-fin.nes      test-out/smb1e-fin.bps
 python3 qromp_enc_bps.py test-in-orig/smb2e.nes     test-in-patched/smb2e-fin.nes      test-out/smb2e-fin.bps
 python3 qromp_enc_bps.py test-in-orig/smb3e.nes     test-in-patched/smb3e-fin-bps.nes  test-out/smb3e-fin.bps
-python3 qromp_enc_bps.py test-in-orig/smb3u.nes     test-in-patched/smb3u-marioadv.nes test-out/smb3u-marioadv.bps --min-copy 16
+python3 qromp_enc_bps.py test-in-orig/smb3u.nes     test-in-patched/smb3u-marioadv.nes test-out/smb3u-marioadv.bps --min-copy-len 16
 echo "Original:"
 ls -l test-in-bps/
 echo "Created:"

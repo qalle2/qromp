@@ -5,16 +5,7 @@ from zlib import crc32
 # note that "source" and "target" here refer to *encoder*'s input files
 (SOURCE_READ, TARGET_READ, SOURCE_COPY, TARGET_COPY) = range(4)
 
-ACTION_DESCRIPTIONS = {
-    SOURCE_READ: "SourceRead",
-    TARGET_READ: "TargetRead",
-    SOURCE_COPY: "SourceCopy",
-    TARGET_COPY: "TargetCopy",
-}
-
-# maximum unsigned integer to read from BPS file
-# (you may want to increase this in the future)
-MAX_UINT = 2 ** 64
+ACTION_DESCRIPTIONS = ("SourceRead", "TargetRead", "SourceCopy", "TargetCopy")
 
 FOOTER_SIZE = 3 * 4
 
@@ -67,13 +58,12 @@ def read_int(handle):
     # final byte has MSB set, all other bytes have MSB clear;
     # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14)
     # = 0x29a92
+
     decoded = shift = 0
     while True:
         byte = read_bytes(1, handle)[0]
         decoded += (byte & 0x7f) << shift
-        if decoded > MAX_UINT:
-            sys.exit("BPS integer too large. (Corrupt patch?)")
-        elif byte & 0x80:
+        if byte & 0x80:
             break
         shift += 7
         decoded += 1 << shift
@@ -188,10 +178,7 @@ def apply_bps(origHnd, patchHnd, verbose):
     if id_[:3] != b"BPS":
         sys.exit("Not a BPS patch.")
     if id_[3:] != b"1":
-        print(
-            "Warning: possibly unsupported version of BPS file.",
-            file=sys.stderr
-        )
+        print("Warning: unknown BPS version.", file=sys.stderr)
 
     # header - file sizes
     hdrSrcSize = read_int(patchHnd)
@@ -202,17 +189,13 @@ def apply_bps(origHnd, patchHnd, verbose):
             f"patched={hdrDstSize}."
         )
     if hdrSrcSize != len(srcData):
-        print(
-            f"Warning: original file size should be {hdrSrcSize}.",
-            file=sys.stderr
-        )
+        print("Warning: original file size mismatch.", file=sys.stderr)
 
     # header - metadata
     metadataSize = read_int(patchHnd)
     if metadataSize:
         metadata = read_bytes(metadataSize, patchHnd)
-        if verbose:
-            print("Metadata:", metadata.decode("ascii", errors="replace"))
+        print(metadata.decode("ascii", errors="replace"))
     elif verbose:
         print("No metadata.")
 
@@ -221,10 +204,7 @@ def apply_bps(origHnd, patchHnd, verbose):
 
     # validate output size
     if hdrDstSize != len(dstData):
-        print(
-            f"Warning: patched file size should be {hdrDstSize}.",
-            file=sys.stderr
-        )
+        print("Warning: patched file size mismatch.", file=sys.stderr)
 
     # validate CRCs from footer
     footer = read_bytes(FOOTER_SIZE, patchHnd)

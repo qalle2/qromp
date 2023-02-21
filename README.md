@@ -46,23 +46,27 @@ options:
 
 ## qromp_enc_bps.py
 ```
-usage: qromp_enc_bps.py [-h] [--min-copy MIN_COPY]
+usage: qromp_enc_bps.py [-h] [--min-copy-len MIN_COPY_LEN]
+                        [--metadata METADATA]
                         orig_file modified_file patch_file
 
 Qalle's BPS Patch Creator. Creates a BPS patch from the differences of two
 files. Slow.
 
 positional arguments:
-  orig_file            Original file to read.
-  modified_file        File to read and compare against orig_file.
-  patch_file           Patch file to write (.bps).
+  orig_file             Original file to read.
+  modified_file         File to read and compare against orig_file.
+  patch_file            Patch file to write (.bps).
 
 options:
-  -h, --help           show this help message and exit
-  --min-copy MIN_COPY  Minimum length of substrings to copy from original or
-                       patched file. 1-32, default=4. A larger value is
-                       usually faster but less efficient and requires more
-                       memory.
+  -h, --help            show this help message and exit
+  --min-copy-len MIN_COPY_LEN
+                        Minimum length of substrings to copy from original or
+                        patched file. 1-32, default=4. A larger value is
+                        usually faster but less efficient and requires more
+                        memory.
+  --metadata METADATA   Metadata to save in the patch file, in ASCII.
+                        Default=none.
 ```
 
 ## qromp_enc_ips.py
