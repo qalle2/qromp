@@ -91,8 +91,6 @@ options:
 ```
 
 ## Other files
-* `bps-spec.txt`: BPS file format specification, from [here](https://gist.github.com/khadiwala/32550f44efcc36a5b6a470ff2d4c9c22).
-* `ips-spec.txt`: IPS file format specification, from [here](https://zerosoft.zophar.net/ips.php).
 * `*.sh`: Linux scripts that test the programs. Warning: they delete files.
 * `*.md5`: MD5 hashes of correctly-patched test files.
 

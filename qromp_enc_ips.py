@@ -144,7 +144,7 @@ def encode_int(n, byteCnt):
 def create_ips(handle1, handle2, args):
     # create an IPS patch from the differences of handle1 and handle2;
     # generate patch data; note: has the "EOF" address (0x454f46) bug;
-    # see "ips-spec.txt" for file format specs
+    # see https://zerosoft.zophar.net/ips.php
 
     handle1.seek(0)
     origData = handle1.read()

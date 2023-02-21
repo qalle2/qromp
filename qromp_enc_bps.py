@@ -93,7 +93,7 @@ def create_bps(handle1, handle2, minCopyLen):
     # generate patch data except for the patch CRC at the end;
     # the encoder doesn't take advantage of TARGET_COPY blocks being able to
     # extend past the end of the patched file;
-    # see "bps-spec.txt" for file format specs
+    # see https://gist.github.com/khadiwala/32550f44efcc36a5b6a470ff2d4c9c22
 
     handle1.seek(0)
     data1 = handle1.read()

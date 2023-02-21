@@ -172,7 +172,7 @@ def decode_blocks(srcData, patchHnd, verbose):
 
 def apply_bps(origHnd, patchHnd, verbose):
     # apply BPS patch from patchHnd to origHnd, return patched data;
-    # see "bps-spec.txt" for file format specs
+    # see https://gist.github.com/khadiwala/32550f44efcc36a5b6a470ff2d4c9c22
 
     origHnd.seek(0)
     srcData = origHnd.read()
