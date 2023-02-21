@@ -62,7 +62,7 @@ def read_bytes(n, handle):
         sys.exit("Unexpected end of patch file.")
     return data
 
-def read_bps_int(handle):
+def read_int(handle):
     # read an unsigned BPS integer starting from current file position;
     # final byte has MSB set, all other bytes have MSB clear;
     # e.g. b"\x12\x34\x89" = (0x12<<0) + ((0x34+1)<<7) + ((0x09+1)<<14)
@@ -79,9 +79,9 @@ def read_bps_int(handle):
         decoded += 1 << shift
     return decoded
 
-def read_signed_bps_int(handle):
+def read_signed_int(handle):
     # read a signed BPS integer
-    n = read_bps_int(handle)
+    n = read_int(handle)
     return (-1 if n & 1 else 1) * (n >> 1)
 
 def decode_blocks(srcData, patchHnd, verbose):
@@ -110,7 +110,7 @@ def decode_blocks(srcData, patchHnd, verbose):
         origDstSize = len(dstData)
 
         # get length and type of block
-        lengthAndAction = read_bps_int(patchHnd)
+        lengthAndAction = read_int(patchHnd)
         length = (lengthAndAction >> 2) + 1
         action = lengthAndAction & 3
 
@@ -124,14 +124,14 @@ def decode_blocks(srcData, patchHnd, verbose):
             dstData.extend(read_bytes(length, patchHnd))
         elif action == SOURCE_COPY:
             # copy from any address in original file
-            srcOffset += read_signed_bps_int(patchHnd)
+            srcOffset += read_signed_int(patchHnd)
             if srcOffset < 0 or srcOffset + length > len(srcData):
                 sys.exit("SourceCopy: invalid read position.")
             dstData.extend(srcData[srcOffset:srcOffset+length])
             srcOffset += length
         else:
             # TARGET_COPY - copy from any address in patched file
-            dstOffset += read_signed_bps_int(patchHnd)
+            dstOffset += read_signed_int(patchHnd)
             if not 0 <= dstOffset < len(dstData):
                 sys.exit("TargetCopy: invalid read position.")
             # can't copy all in one go because newly-added bytes may also be
@@ -194,8 +194,8 @@ def apply_bps(origHnd, patchHnd, verbose):
         )
 
     # header - file sizes
-    hdrSrcSize = read_bps_int(patchHnd)
-    hdrDstSize = read_bps_int(patchHnd)
+    hdrSrcSize = read_int(patchHnd)
+    hdrDstSize = read_int(patchHnd)
     if verbose:
         print(
             f"Expected file sizes: original={hdrSrcSize}, "
@@ -208,7 +208,7 @@ def apply_bps(origHnd, patchHnd, verbose):
         )
 
     # header - metadata
-    metadataSize = read_bps_int(patchHnd)
+    metadataSize = read_int(patchHnd)
     if metadataSize:
         metadata = read_bytes(metadataSize, patchHnd)
         if verbose:

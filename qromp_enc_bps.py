@@ -47,8 +47,6 @@ def parse_args():
 
     return args
 
-# -----------------------------------------------------------------------------
-
 def encode_int(n):
     # convert a nonnegative integer into BPS format; return bytes;
     # final byte has MSB set, all other bytes have MSB clear;
@@ -193,8 +191,6 @@ def create_bps(handle1, handle2, minCopyLen):
 
     # footer except for patch CRC (source/target file CRC)
     yield struct.pack("<2L", crc32(data1), crc32(data2))
-
-# -----------------------------------------------------------------------------
 
 def main():
     startTime = time.time()
