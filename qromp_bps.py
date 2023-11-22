@@ -137,12 +137,12 @@ def decode_blocks(srcData, patchHnd, verbose):
                 dstOffset += chunkSize
 
         if verbose:
-            srcAddr = (
-                origDstSize,               # SOURCE_READ
-                patchHnd.tell() - length,  # TARGET_READ
-                srcOffset - length,        # SOURCE_COPY
-                dstOffset - length,        # TARGET_COPY
-            )[action]
+            srcAddr = {
+                SOURCE_READ: origDstSize,
+                TARGET_READ: patchHnd.tell() - length,
+                SOURCE_COPY: srcOffset - length,
+                TARGET_COPY: dstOffset - length,
+            }[action]
             print(
                 f"{origPatchPos:10} {origDstSize:10} "
                 f"{ACTION_DESCRIPTIONS[action]} {srcAddr:10} {length:10}"

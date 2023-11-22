@@ -1,12 +1,9 @@
 import argparse, os, struct, sys, time
 from zlib import crc32
 
-# actions (types of BPS blocks); note that "source" and "target" here refer to
-# encoder's *input* files
-SOURCE_READ = 0
-TARGET_READ = 1
-SOURCE_COPY = 2
-TARGET_COPY = 3
+# enumerate actions (types of BPS blocks); note that "source" and "target" here
+# refer to encoder's *input* files
+(SOURCE_READ, TARGET_READ, SOURCE_COPY, TARGET_COPY) = range(4)
 
 def parse_args():
     # parse command line arguments
